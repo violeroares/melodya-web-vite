@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Melodya — De una idea a una canción.</title>
+    <meta name="description" content="No necesitás saber de música para crear una canción. Tenés una idea: Melodya te ayuda a convertirla en música. Generá canciones, letras y voces con Melodya y compartilas con la comunidad." />
+    <meta name="keywords" content="Melodya, música con Melodya, crear canciones, letras con Melodya, comunidad musical, generador de música" />
+    <meta name="author" content="Melodya" />
+    <meta name="theme-color" content="#F3E5E2" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#131C33" media="(prefers-color-scheme: dark)" />
+    <link rel="manifest" href="/manifest.json" />
+    <link rel="icon" type="image/png" sizes="512x512" href="/icon-512.png" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
+    <script>try{var t=localStorage.getItem("theme");var d=t==="dark"||((!t||t==="system")&&matchMedia("(prefers-color-scheme: dark)").matches);if(d)document.documentElement.classList.add("dark");}catch(e){}</script>
+    <!--og:start-->
+    <meta property="og:site_name" content="Melodya" />
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="Melodya — De una idea a una canción." />
+    <meta property="og:description" content="Tenés una idea. Melodya te ayuda a convertirla en música." />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Melodya — De una idea a una canción." />
+    <meta name="twitter:description" content="Tenés una idea. Melodya te ayuda a convertirla en música." />
+    <!--og:end-->
+  </head>
+  <body class="antialiased bg-background text-foreground">
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

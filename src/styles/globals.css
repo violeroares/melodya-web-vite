@@ -1,0 +1,1068 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+
+@custom-variant dark (&:is(.dark *));
+
+/* Tipografías (@fontsource, importadas en main.tsx): mismas variables que next/font en Melodya Web. */
+:root {
+  --font-figtree: "Figtree";
+  --font-geist-mono: "Geist Mono";
+  --font-bricolage: "Bricolage Grotesque";
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   MELODYA — SISTEMA VISUAL 2.0
+   Fuente de verdad: docs/design-V2/design-system/tokens.json (+ tokens.css).
+   Dos temas con la misma estructura: oscuro (navy, por defecto de la web) y
+   claro (crema). Naranja #FF6B4D = acción; dorado #C98F22 = segunda voz.
+   Los tokens `--m-*` son los de design-V2; las variables shadcn (--primary,
+   --card, …) se derivan de ellos para que todo componente siga el sistema.
+   ═══════════════════════════════════════════════════════════════════════ */
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-figtree);
+  --font-mono: var(--font-geist-mono);
+  --font-display: var(--font-bricolage);
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar: var(--sidebar);
+  --color-chart-5: var(--chart-5);
+  --color-chart-4: var(--chart-4);
+  --color-chart-3: var(--chart-3);
+  --color-chart-2: var(--chart-2);
+  --color-chart-1: var(--chart-1);
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-amber: var(--amber);
+  --color-amber-strong: var(--amber-strong);
+  --color-coral: var(--coral);
+  --color-success: var(--success);
+  --color-danger: var(--danger);
+  /* Tokens V2 sin equivalente shadcn */
+  --color-gold: var(--m-gold);
+  --color-on-gold: var(--m-on-gold);
+  --color-label: var(--m-label);
+  --color-voice: var(--m-voice);
+  --color-on-voice: var(--m-on-voice);
+  --color-selected: var(--m-selected);
+  --color-on-selected: var(--m-on-selected);
+  --color-line: var(--m-line);
+  --color-faint: var(--m-faint);
+  --color-accent-soft: var(--m-accent-soft);
+  --color-lyric-tag: var(--m-lyric-section-tag);
+  --color-orbit-0: var(--m-orbit-0);
+  --color-orbit-1: var(--m-orbit-1);
+  --color-orbit-2: var(--m-orbit-2);
+  --color-orbit-3: var(--m-orbit-3);
+  --color-element-idea: var(--m-element-idea);
+  --color-element-lyrics: var(--m-element-lyrics);
+  --color-element-sound: var(--m-element-sound);
+  --color-element-style: var(--m-element-style);
+  /* Radios V2 (chip 20, pill 28, sheet 32; tarjetas asimétricas) */
+  --radius-sm: 8px;
+  --radius-md: 14px;
+  --radius-lg: 20px;
+  --radius-xl: 28px;
+  --radius-2xl: 28px;
+  --radius-3xl: 32px;
+  /* Portadas de canción (Feed V2): más redondeo arriba que abajo. */
+  --radius-cover: 28px 28px 14px 14px;
+}
+
+/* ── Tema claro (V2 light: crema + navy) ── */
+:root {
+  --m-background: #F3E5E2;
+  --m-foreground: #131C33;
+  --m-foreground-secondary: #545D72;
+  --m-line: #8A776F;
+  --m-faint: rgba(19, 28, 51, 0.141);
+  --m-surface: #FBF3F0;
+  --m-input: #FFFDFB;
+  --m-label: #7E3619;
+  --m-voice: #131C33;
+  --m-on-voice: #F3E5E2;
+  --m-selected: #131C33;
+  --m-on-selected: #F3E5E2;
+  --m-error: #A93227;
+  --m-border: #D5C0B8;
+  --m-separator: #E9D9D2;
+  --m-accent: #FF6B4D;
+  --m-on-accent: #131C33;
+  --m-accent-soft: #F5A790;
+  --m-gold: #C98F22;
+  --m-on-gold: #131C33;
+  --m-capsule-tint: rgba(165, 57, 10, 0.239);
+  --m-lyric-section-tag: #8A5E10;
+  --m-orbit-0: #4C5060;
+  --m-orbit-1: #6D707E;
+  --m-orbit-2: #8E909B;
+  --m-orbit-3: #ACACB4;
+  --m-scrim: rgba(19, 28, 51, 0.502);
+  --m-scroll-thumb: rgba(19, 28, 51, 0.302);
+  --m-element-idea: #FF6B4D;
+  --m-element-lyrics: #C98F22;
+  --m-element-sound: #7B93E8;
+  --m-element-style: #E0BCAE;
+  /* Éxito: V2 no define un token; verde con contraste ≥4.5:1 sobre cada fondo */
+  --m-success: #1F6B49;
+  --m-focus-ring: rgba(255, 107, 77, 0.22);
+
+  --radius: 20px;
+
+  --background: var(--m-background);
+  --foreground: var(--m-foreground);
+  --surface: var(--m-surface);
+  --surface-2: var(--m-separator);
+  --card: var(--m-surface);
+  --card-foreground: var(--m-foreground);
+  --popover: var(--m-surface);
+  --popover-foreground: var(--m-foreground);
+  --primary: var(--m-accent);
+  --primary-foreground: var(--m-on-accent);
+  --secondary: var(--m-separator);
+  --secondary-foreground: var(--m-foreground);
+  --muted: var(--m-separator);
+  --muted-foreground: var(--m-foreground-secondary);
+  --accent: var(--m-separator);
+  --accent-foreground: var(--m-foreground);
+  --amber: var(--m-accent);
+  --amber-strong: var(--m-label);
+  --coral: var(--m-accent-soft);
+  --success: var(--m-success);
+  --danger: var(--m-error);
+  --destructive: var(--m-error);
+  --border: var(--m-border);
+  --input: var(--m-line);
+  --ring: var(--m-foreground);
+  --chart-1: var(--m-element-idea);
+  --chart-2: var(--m-element-lyrics);
+  --chart-3: var(--m-element-sound);
+  --chart-4: var(--m-element-style);
+  --chart-5: var(--m-foreground-secondary);
+  --sidebar: var(--m-surface);
+  --sidebar-foreground: var(--m-foreground);
+  --sidebar-primary: var(--m-accent);
+  --sidebar-primary-foreground: var(--m-on-accent);
+  --sidebar-accent: var(--m-separator);
+  --sidebar-accent-foreground: var(--m-foreground);
+  --sidebar-border: var(--m-border);
+  --sidebar-ring: var(--m-foreground);
+}
+
+/* ── Tema oscuro (V2 dark: navy + crema) ── */
+.dark {
+  --m-background: #131C33;
+  --m-foreground: #F3E5E2;
+  --m-foreground-secondary: #9AA3B8;
+  --m-line: rgba(243, 229, 226, 0.502);
+  --m-faint: rgba(243, 229, 226, 0.161);
+  --m-surface: #1B2644;
+  --m-input: #1B2644;
+  --m-label: #FF8A70;
+  --m-voice: #27345E;
+  --m-on-voice: #F3E5E2;
+  --m-selected: #F3E5E2;
+  --m-on-selected: #131C33;
+  --m-error: #FF8A7A;
+  --m-border: rgba(243, 229, 226, 0.22);
+  --m-separator: rgba(243, 229, 226, 0.122);
+  --m-accent-soft: #E9876F;
+  --m-lyric-section-tag: #E0A63C;
+  --m-orbit-0: #C4C9D3;
+  --m-orbit-1: #8D94A6;
+  --m-orbit-2: #5E667D;
+  --m-orbit-3: #3B4561;
+  --m-scroll-thumb: rgba(243, 229, 226, 0.38);
+  --m-success: #7FD6A8;
+
+  --surface-2: var(--m-voice);
+  --secondary: var(--m-voice);
+  --muted: var(--m-voice);
+  --accent: var(--m-voice);
+  --sidebar: var(--m-surface); /* un azul apenas más claro que las pantallas, para que la barra se distinga */
+  --sidebar-accent: var(--m-voice);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  /* Tailwind v4 deja los botones con cursor por defecto: se marca como clickeable todo lo interactivo. */
+  button:not(:disabled),
+  [role='button']:not([aria-disabled='true']),
+  summary {
+    cursor: pointer;
+  }
+  html {
+    scroll-behavior: smooth;
+    /* Reserva el hueco de la barra de scroll: evita el salto lateral al abrir menús/modales (Radix bloquea el scroll). */
+    scrollbar-gutter: stable;
+  }
+  /* El gutter ya está reservado, así que se anula la compensación que Radix añade al bloquear el scroll. */
+  body[data-scroll-locked] {
+    margin-right: 0 !important;
+    padding-right: 0 !important;
+  }
+  body {
+    @apply bg-background text-foreground antialiased;
+    font-family: var(--font-figtree), system-ui, sans-serif;
+    font-size: 16px;
+    line-height: 1.45;
+  }
+  .font-display {
+    font-family: var(--font-bricolage), var(--font-figtree), system-ui, sans-serif;
+    letter-spacing: -0.02em;
+  }
+  ::selection {
+    background: color-mix(in srgb, var(--m-accent) 30%, transparent);
+  }
+}
+
+/* ── Scrollbars V2: fina, color --m-scroll-thumb, naranja al pasar ── */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--m-scroll-thumb) transparent;
+}
+*::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+*::-webkit-scrollbar-thumb {
+  background: var(--m-scroll-thumb);
+  border-radius: 999px;
+}
+*::-webkit-scrollbar-thumb:hover {
+  background: var(--m-accent);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   UTILIDADES PROPIAS
+   ═══════════════════════════════════════════════════════════════════════ */
+
+/* Gradiente de acento (CTA principal) */
+/* V2 es plano: sin gradientes. Los nombres heredados se conservan como
+   alias del color de acción para no tocar cada uso; lo pintan sólido. */
+.gradient-warm {
+  background-color: var(--m-accent);
+}
+/* Desactivado: el alias de arriba pinta el color de acción como regla suelta, que le ganaría al estilo de desactivado del botón (fondo suave + texto gris) y dejaría texto gris sobre naranja */
+.gradient-warm:disabled,
+.gradient-warm[aria-disabled="true"] {
+  background-color: var(--m-faint);
+  color: var(--muted-foreground);
+}
+.text-gradient-warm {
+  color: var(--m-accent);
+}
+
+/* Glow suave del CTA */
+.glow-amber {
+  box-shadow: none;
+}
+
+/* Textura de fondo con partituras sutiles */
+/* Fondo estrellado (mismo de la landing): puntos pequeños y fijos. En claro usan el acento pleno
+   y un punto algo más grande para que se noten sobre el fondo crema. */
+.bg-noise {
+  --star-a: color-mix(in srgb, var(--m-foreground) 45%, transparent);
+  --star-b: color-mix(in srgb, var(--m-accent) 55%, transparent);
+  --star-c: color-mix(in srgb, var(--m-element-sound) 65%, transparent);
+  --star-r: 1.5px;
+  background-image:
+    radial-gradient(circle at 8% 16%, var(--star-a) 0 var(--star-r), transparent calc(var(--star-r) + 0.5px)),
+    radial-gradient(circle at 76% 10%, var(--star-b) 0 var(--star-r), transparent calc(var(--star-r) + 0.5px)),
+    radial-gradient(circle at 28% 76%, var(--star-a) 0 var(--star-r), transparent calc(var(--star-r) + 0.5px)),
+    radial-gradient(circle at 92% 68%, var(--star-b) 0 var(--star-r), transparent calc(var(--star-r) + 0.5px)),
+    radial-gradient(circle at 54% 42%, var(--star-c) 0 var(--star-r), transparent calc(var(--star-r) + 0.5px));
+  background-size: 300px 280px, 420px 360px, 480px 440px, 340px 400px, 560px 500px;
+  background-attachment: fixed;
+}
+.dark .bg-noise {
+  --star-a: color-mix(in srgb, var(--m-foreground) 55%, transparent);
+  --star-b: color-mix(in srgb, var(--m-accent-soft) 55%, transparent);
+  --star-c: color-mix(in srgb, var(--m-element-sound) 55%, transparent);
+  --star-r: 1px;
+}
+
+/* Aro de "disco" para portadas */
+.vinyl-ring {
+  box-shadow: none;
+}
+
+/* Animación de "sonando" (barras de ecualizador) */
+@keyframes eq {
+  0%, 100% { transform: scaleY(0.3); }
+  50% { transform: scaleY(1); }
+}
+.eq-bar {
+  transform-origin: bottom;
+  animation: eq 0.9s ease-in-out infinite;
+}
+
+/* Onda del reproductor */
+@keyframes wave {
+  0% { background-position: 0 0; }
+  100% { background-position: 480px 0; }
+}
+
+/* Flechas del carrusel de banners (SLIDER): visibles en TODOS los tamaños,
+   dentro de los bordes en mobile y voladas en ≥sm. */
+.banner-arrow {
+  position: absolute;
+  top: 50%;
+  z-index: 10;
+  display: flex;
+  height: 2.4rem;
+  width: 2.4rem;
+  align-items: center;
+  justify-content: center;
+  transform: translateY(-50%);
+  border-radius: 9999px;
+  border: 1.5px solid var(--m-line);
+  background: var(--surface);
+  color: var(--foreground);
+  cursor: pointer;
+  transition: transform 0.15s ease, border-color 0.15s ease, opacity 0.2s ease;
+}
+.banner-arrow:hover {
+  border-color: var(--foreground);
+  transform: translateY(-50%);
+}
+.banner-arrow:active {
+  transform: translateY(-50%) scale(0.94);
+}
+
+/* ── Efectos de AnnouncementBar (contrato del backend) ── */
+@keyframes marquee {
+  from { transform: translateX(100%); }
+  to { transform: translateX(-100%); }
+}
+/* Marquesina con máscara: el texto se desvanece al llegar al botón fijo. */
+.announce-scroll-mask {
+  -webkit-mask-image: linear-gradient(to right, transparent 0, black 6%, black 88%, transparent 100%);
+  mask-image: linear-gradient(to right, transparent 0, black 6%, black 88%, transparent 100%);
+}
+.announce-scroll {
+  animation: marquee 18s linear infinite;
+}
+@keyframes pulse-soft {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.65; }
+}
+.announce-pulse {
+  animation: pulse-soft 1.6s ease-in-out infinite;
+}
+@keyframes typing {
+  from { width: 0; }
+  to { width: 100%; }
+}
+.announce-type {
+  display: inline-block;
+  overflow: hidden;
+  white-space: nowrap;
+  border-right: 2px solid currentColor;
+  animation: typing 3.2s steps(40, end) infinite alternate;
+}
+@keyframes shine-sweep {
+  0% { background-position: -200% center; }
+  100% { background-position: 200% center; }
+}
+/* SHINE se muestra como PARPADEO suave: el barrido rápido original no se
+   llegaba a leer. Ciclo 1.9s — 70% del tiempo en opacidad plena. */
+@keyframes blink-soft {
+  0%, 55% { opacity: 1; }
+  70% { opacity: 0.35; }
+  85% { opacity: 1; }
+  92% { opacity: 0.55; }
+  100% { opacity: 1; }
+}
+.announce-shine {
+  animation: blink-soft 1.9s ease-in-out infinite;
+  text-shadow: 0 0 14px color-mix(in srgb, currentColor 35%, transparent);
+}
+
+/* ── Transiciones de vista ── */
+@keyframes view-in {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: none; }
+}
+.view-in {
+  animation: view-in 0.35s cubic-bezier(0.21, 1.02, 0.73, 1) backwards;
+}
+
+@keyframes float-slow {
+  0%, 100% { transform: translateY(0px) rotate(var(--r, 0deg)); }
+  50% { transform: translateY(-14px) rotate(var(--r, 0deg)); }
+}
+.float-slow {
+  animation: float-slow 7s ease-in-out infinite;
+}
+
+/* Estado focus visible accesible */
+:focus-visible {
+  outline: 2px solid var(--m-foreground);
+  outline-offset: 2px;
+}
+/* Campos que ya dibujan su propio foco (buscador de comandos: el contenedor lo muestra) */
+[data-slot="command-input"]:focus-visible,
+[data-canvas-field]:focus-visible {
+  outline: none;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   PULIDO VISUAL (detalles de craft)
+   ═══════════════════════════════════════════════════════════════════════ */
+
+/* Shimmer para skeletons (barrido de luz en vez de pulse plano) */
+@keyframes shimmer-sweep {
+  from { background-position: 200% 0; }
+  to { background-position: -200% 0; }
+}
+.skeleton,
+[data-slot="skeleton"] {
+  background-color: var(--m-faint);
+  animation: pulse-soft 1.8s ease-in-out infinite;
+}
+
+/* Elevación sutil al pasar por cards clickeables */
+.lift {
+  transition: border-color 0.2s ease;
+}
+.lift:hover, .lift:focus-visible {
+  border-color: var(--m-line);
+}
+
+/* Halo ámbar suave para el elemento "activo" de listas */
+.halo-amber {
+  box-shadow: 0 0 0 2px var(--m-accent);
+}
+
+/* Tipografía: títulos con balance de líneas (más elegante en 2 líneas) */
+h1, h2, h3, .font-display {
+  text-wrap: balance;
+}
+/* `text-wrap` pisa al `white-space: nowrap` de `truncate`: sin esto los títulos truncados se parten en varias líneas */
+.truncate {
+  text-wrap: nowrap;
+}
+
+/* Subrayado cálido para links de texto */
+.link-warm {
+  text-decoration: underline;
+  text-decoration-color: var(--m-accent);
+  text-decoration-thickness: 2px;
+  text-underline-offset: 3px;
+  transition: text-decoration-color 0.2s ease;
+}
+.link-warm:hover, .link-warm:focus-visible {
+  text-decoration-color: var(--foreground);
+}
+
+/* Respeto por usuarios con movimiento reducido */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   PULIDO VISUAL — SEGUNDA CAPA DE CRAFT (detalles finos)
+   ═══════════════════════════════════════════════════════════════════════ */
+
+/* Barrido de luz al hover (CTAs y cards protagonistas): brillo diagonal
+   que cruza la superficie, tipo reflejo de vinilo. */
+.sheen {
+  position: relative;
+  overflow: hidden;
+  isolation: isolate;
+}
+.sheen::after {
+  content: none;
+}
+
+/* Línea de luz superior en cards (borde interior de 1px, "bisel" premium) */
+.card-edge-light {
+  position: relative;
+}
+.card-edge-light::before {
+  content: none;
+}
+
+/* Entrada escalonada de listas/grids: cada hijo entra con un micro-fade */
+@keyframes fade-up-soft {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.stagger > * {
+  animation: fade-up-soft 0.4s cubic-bezier(0.21, 1.02, 0.73, 1) both;
+}
+.stagger > *:nth-child(1) { animation-delay: 0.02s; }
+.stagger > *:nth-child(2) { animation-delay: 0.06s; }
+.stagger > *:nth-child(3) { animation-delay: 0.1s; }
+.stagger > *:nth-child(4) { animation-delay: 0.14s; }
+.stagger > *:nth-child(5) { animation-delay: 0.18s; }
+.stagger > *:nth-child(6) { animation-delay: 0.22s; }
+.stagger > *:nth-child(7) { animation-delay: 0.26s; }
+.stagger > *:nth-child(8) { animation-delay: 0.3s; }
+.stagger > *:nth-child(n+9) { animation-delay: 0.34s; }
+
+/* Pop sutil (portadas al aparecer, badges) */
+@keyframes pop-in-soft {
+  0% { opacity: 0; transform: scale(0.96); }
+  100% { opacity: 1; transform: scale(1); }
+}
+.pop-in {
+  animation: pop-in-soft 0.3s cubic-bezier(0.21, 1.02, 0.73, 1) both;
+}
+
+/* Ocultar scrollbar en filas horizontales (chips, "seguí escuchando") */
+.scrollbar-none {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.scrollbar-none::-webkit-scrollbar {
+  display: none;
+}
+
+/* Separador con bordes desvanecidos (divide secciones sin dureza) */
+.divider-fade {
+  height: 1px;
+  border: 0;
+  background: var(--m-separator);
+}
+
+/* Fondo "papel de partitura": retícula muy sutil para héroes y estados vacíos */
+.grid-music {
+  background-image: none;
+}
+
+/* Glow cálido para números display (saldo de fichas, contadores) */
+.text-glow-warm {
+  text-shadow: none;
+}
+
+/* Aro pulsante para el botón de play cuando está sonando (PlayerBar) */
+@keyframes pulse-ring {
+  0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--amber) 45%, transparent); }
+  70% { box-shadow: 0 0 0 9px transparent; }
+  100% { box-shadow: 0 0 0 0 transparent; }
+}
+.pulse-ring {
+  animation: pulse-ring 2s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+}
+
+/* Slider cálido (PlayerBar): relleno con gradiente + thumb con halo */
+.slider-warm [data-slot='slider-track'] {
+  height: 6px;
+  background: var(--m-faint);
+}
+.slider-warm [data-slot='slider-range'] {
+  background-color: var(--m-gold);
+  border-radius: 999px;
+}
+.slider-warm [data-slot='slider-thumb'] {
+  height: 14px;
+  width: 14px;
+  border: 2px solid var(--m-accent);
+  background: var(--m-accent);
+  box-shadow: none;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+.slider-warm:hover [data-slot='slider-thumb'],
+.slider-warm [data-slot='slider-thumb']:focus-visible {
+  box-shadow: 0 0 0 4px var(--m-focus-ring);
+}
+
+/* Salto del saldo de fichas al cambiar (Header): bump elástico */
+@keyframes balance-bump {
+  0% { transform: scale(1); }
+  35% { transform: scale(1.14); }
+  100% { transform: scale(1); }
+}
+.balance-bump {
+  animation: balance-bump 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+/* Textura de vinilo para portadas grandes (detalle del disco) */
+.vinyl-grooves {
+  background-image: none;
+}
+
+/* Skip-link accesible: oculto hasta recibir foco por teclado */
+.skip-link {
+  position: fixed;
+  left: 1rem;
+  top: 1rem;
+  z-index: 70;
+  transform: translateY(-200%);
+  border-radius: 999px;
+  padding: 0.625rem 1.25rem;
+  font-size: 0.875rem;
+  font-weight: 700;
+  color: var(--m-on-accent);
+  background-color: var(--m-accent);
+  transition: transform 0.2s ease;
+}
+.skip-link:focus-visible {
+  transform: translateY(0);
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+
+/* Corazón que "late" al dar me gusta (reacción optimista) */
+@keyframes heart-pop {
+  0% { transform: scale(1); }
+  35% { transform: scale(1.4) rotate(-6deg); }
+  65% { transform: scale(0.92); }
+  100% { transform: scale(1); }
+}
+.heart-pop {
+  animation: heart-pop 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+/* Máscara de desvanecido para bloques largos de letra con scroll */
+.fade-edges-y {
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0, black 18px, black calc(100% - 26px), transparent 100%);
+  mask-image: linear-gradient(to bottom, transparent 0, black 18px, black calc(100% - 26px), transparent 100%);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sheen::after { display: none; }
+  .stagger > * { animation: none; }
+  .pop-in { animation: none; }
+  .pulse-ring { animation: none; }
+  .balance-bump { animation: none; }
+  .heart-pop { animation: none; }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   TERCERA CAPA DE CRAFT — reproductor expandido + command palette
+   ═══════════════════════════════════════════════════════════════════════ */
+
+/* Chip de tecla (kbd): siempre visible, cálido, con bisel sutil */
+.kbd {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.35rem;
+  height: 1.35rem;
+  padding: 0 0.35rem;
+  border-radius: 0.4rem;
+  border: 1px solid var(--border);
+  border-bottom-width: 2px;
+  background: var(--surface-2);
+  font-family: var(--font-mono);
+  font-size: 0.65rem;
+  font-weight: 700;
+  line-height: 1;
+  color: var(--muted-foreground);
+}
+.kbd:first-child { margin-left: 0; }
+
+/* Disco de vinilo girando (solo cuando suena; respeta reduced-motion) */
+@keyframes vinyl-spin {
+  to { transform: rotate(360deg); }
+}
+.vinyl-spin {
+  animation: vinyl-spin 16s linear infinite;
+  animation-play-state: paused;
+}
+.vinyl-spin[data-playing='true'] {
+  animation-play-state: running;
+}
+
+/* Entradas del reproductor expandido */
+@keyframes np-in {
+  from { opacity: 0; transform: translateY(26px) scale(0.97); }
+  to { opacity: 1; transform: none; }
+}
+.np-in {
+  animation: np-in 0.34s cubic-bezier(0.22, 1, 0.36, 1);
+}
+@keyframes np-fade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+.np-fade {
+  animation: np-fade 0.22s ease-out;
+}
+
+/* Ítem de command palette: barra ámbar a la izquierda cuando está activo */
+@keyframes cmdk-glide {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: none; }
+}
+.cmdk-item-warm {
+  animation: cmdk-glide 0.18s ease-out both;
+}
+[data-highlighted='true'] .cmdk-dot,
+[data-highlighted] .cmdk-dot {
+  opacity: 1;
+  transform: scale(1);
+}
+.cmdk-dot {
+  opacity: 0;
+  transform: scale(0.5);
+  transition: opacity 0.15s ease, transform 0.15s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+/* Foco visible V2: contorno del color de texto (≥3:1 en ambos temas) */
+:focus-visible {
+  outline-color: var(--m-foreground);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   CUARTA CAPA DE CRAFT — detalles de la ronda 7
+   (radio viva, filas de cola con acción, entradas más ricas) ══════════ */
+
+/* Hilo de progreso "radio encendida": shimmer ámbar que fluye hacia adelante
+   (sobre el hilo real de progreso del PlayerBar / BottomNav). */
+.radio-thread::after {
+  content: none;
+}
+
+/* Botón "me gusta" del reproductor expandido: latido sutil al pasar el mouse */
+.like-warm:hover .lucide-heart {
+  transform: scale(1.12);
+}
+.like-warm .lucide-heart {
+  transition: transform 0.18s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .vinyl-spin { animation: none; }
+  .np-in { animation: none; }
+  .np-fade { animation: none; }
+  .cmdk-item-warm { animation: none; }
+  .cmdk-dot { transition: none; opacity: 1; transform: none; }
+  .radio-thread::after { animation: none; opacity: 0; }
+  .like-warm .lucide-heart { transition: none; }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   QUINTA CAPA DE CRAFT — detalles de la ronda 8
+   (cola reordenable: drag & drop con guía ámbar; atajos con chips kbd) ═ */
+
+/* Fila que se está arrastrando: se "levanta" de la lista */
+.queue-row-dragging {
+  opacity: 0.55;
+  cursor: grabbing !important;
+  background: var(--m-faint);
+}
+
+/* Línea-guía de destino del drag: hilo ámbar con glow, arriba/abajo de la fila */
+.queue-drop-line {
+  display: block;
+  height: 2px;
+  border-radius: 999px;
+  background: var(--m-accent);
+  animation: drop-line-in 0.18s ease-out;
+  pointer-events: none;
+}
+@keyframes drop-line-in {
+  from { transform: scaleX(0.4); opacity: 0; }
+  to { transform: scaleX(1); opacity: 1; }
+}
+
+/* Fila arrastrable: cursor de agarre + realce sutil al pasar el mouse */
+[draggable='true'].group\/row:hover {
+  cursor: grab;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .queue-drop-line { animation: none; }
+  .queue-row-dragging { transform: none; }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   SEXTA CAPA DE CRAFT — aleatorio persistido, cola exportable, eq clickeable
+   ═══════════════════════════════════════════════════════════════════════ */
+
+/* Ícono de aleatorio activo: vaivén sutil (cruces que se re-acomodan) */
+@keyframes shuffle-sway {
+  0%, 100% { transform: rotate(-8deg); }
+  50% { transform: rotate(8deg); }
+}
+.shuffle-on {
+  animation: shuffle-sway 1.6s ease-in-out infinite;
+}
+
+/* Chip "aleatorio activo" en la pista de atajos del sheet */
+.chip-shuffle-status {
+  margin-left: auto;
+  padding: 0.1rem 0.5rem;
+  border-radius: 999px;
+  border: 1px solid color-mix(in oklab, var(--amber) 40%, transparent);
+  background: color-mix(in oklab, var(--amber) 12%, transparent);
+  color: var(--amber-strong);
+  font-size: 0.65rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+/* Ecualizador clickeable en las tarjetas: pausa/reanuda el tema que suena */
+.eq-btn {
+  display: inline-flex;
+  padding: 0.2rem;
+  color: var(--amber-strong);
+  transition: transform 0.18s ease, filter 0.18s ease, box-shadow 0.18s ease;
+}
+.eq-btn:hover {
+  transform: scale(1.1);
+}
+.eq-btn:active { transform: scale(0.94); }
+
+/* Vista previa de la cola a exportar: tarjetitas apiladas con separación */
+.queue-export-preview {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  max-height: 11rem;
+  overflow-y: auto;
+  padding: 0.6rem;
+  border-radius: 0.9rem;
+  border: 1px solid var(--border);
+  background: color-mix(in oklab, var(--surface-2) 55%, transparent);
+}
+.queue-export-preview li {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.3rem 0.45rem;
+  border-radius: 0.6rem;
+  transition: background 0.15s ease;
+}
+.queue-export-preview li:hover { background: color-mix(in oklab, var(--surface-2) 80%, transparent); }
+
+@media (prefers-reduced-motion: reduce) {
+  .shuffle-on { animation: none; }
+  .eq-btn:hover { transform: none; }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   SÉPTIMA CAPA DE CRAFT — ronda 9: hoja de atajos, timer visible,
+   filtro de cola, artista cruzado, volumen con rueda ══════════════════ */
+
+/* Chip kbd ancho (para "Espacio", "Arrastrar", "Ctrl"): misma biselada */
+.kbd-wide {
+  min-width: 2.6rem;
+  padding: 0 0.55rem;
+}
+
+/* Puntita ámbar de los títulos de sección (hoja de atajos) */
+.dot-amber {
+  display: inline-block;
+  width: 0.32rem;
+  height: 0.32rem;
+  border-radius: 999px;
+  background: var(--m-gold);
+}
+
+/* Filas de la hoja de atajos: entrada escalonada (stagger) */
+@keyframes sc-row-in {
+  from { opacity: 0; transform: translateX(-6px); }
+  to { opacity: 1; transform: none; }
+}
+.sc-row {
+  animation: sc-row-in 0.26s ease-out both;
+}
+.sc-row:nth-child(1) { animation-delay: 0.02s; }
+.sc-row:nth-child(2) { animation-delay: 0.06s; }
+.sc-row:nth-child(3) { animation-delay: 0.1s; }
+.sc-row:nth-child(4) { animation-delay: 0.14s; }
+.sc-row:nth-child(5) { animation-delay: 0.18s; }
+.sc-row:nth-child(6) { animation-delay: 0.22s; }
+
+/* Chip del timer de sueño (PlayerBar): puntita que late mientras cuenta */
+.sleep-chip {
+  position: relative;
+}
+.sleep-chip::after {
+  content: '';
+  position: absolute;
+  left: -0.18rem;
+  top: 50%;
+  width: 0.28rem;
+  height: 0.28rem;
+  border-radius: 999px;
+  transform: translateY(-50%);
+  background: var(--amber);
+  animation: sleep-pulse 1.6s ease-in-out infinite;
+}
+@keyframes sleep-pulse {
+  0%, 100% { opacity: 0.35; box-shadow: 0 0 0 0 color-mix(in oklab, var(--amber) 40%, transparent); }
+  50% { opacity: 1; box-shadow: none; }
+}
+
+/* Filtro de la cola: halo ámbar al enfocar */
+.queue-filter:focus-within {
+  box-shadow: 0 0 0 4px var(--m-focus-ring);
+}
+/* El contenedor ya muestra el foco (halo); el contorno global de :focus-visible dibujaba además un rectángulo sobre el input */
+.queue-filter input:focus-visible {
+  outline: none;
+}
+
+/* Link "Más de {artista}" (reproductor expandido): el ícono se asoma al hover */
+.artist-more {
+  transition: color 0.18s ease;
+}
+.artist-more:hover {
+  color: var(--amber-strong);
+}
+.artist-more svg {
+  transition: transform 0.18s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+.artist-more:hover svg {
+  transform: translateX(2px) scale(1.08);
+}
+
+/* Volumen con rueda del ratón: cursor hint sutil en el área ajustable */
+[title='Volumen · rueda del ratón'] {
+  cursor: ns-resize;
+}
+[title='Volumen · rueda del ratón']:hover button:first-child {
+  color: var(--amber-strong);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sc-row { animation: none; }
+  .sleep-chip::after { animation: none; opacity: 0.8; }
+  .artist-more svg { transition: none; }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   OCTAVA CAPA DE CRAFT — ronda 10: colecciones reproducibles, toasts con
+   acción cálida, atajos de volumen ════════════════════════════════════ */
+
+/* Botón de acción dentro de un toast (Deshacer / Mezclar / …): píldora ámbar
+   consistente, con halo al hover. Unifica los estilos inline previos. */
+.toast-action-warm {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.25rem 0.75rem;
+  border-radius: 999px;
+  border: 1px solid color-mix(in oklab, var(--amber) 40%, transparent);
+  background: color-mix(in oklab, var(--amber) 10%, transparent);
+  color: var(--amber-strong);
+  font-size: 0.75rem;
+  font-weight: 700;
+  line-height: 1.4;
+  transition: background 0.18s ease, box-shadow 0.18s ease, transform 0.12s ease;
+  cursor: pointer;
+}
+.toast-action-warm:hover {
+  background: color-mix(in oklab, var(--amber) 20%, transparent);
+}
+.toast-action-warm:active { transform: scale(0.96); }
+
+/* Botón "Colección" en las tarjetas de Letristas: anillo cálido al hover y
+   "respiración" mientras carga (junto al spinner). */
+.persona-play {
+  box-shadow: 0 0 0 0 color-mix(in oklab, var(--amber) 0%, transparent);
+  transition: background 0.18s ease, box-shadow 0.22s ease, transform 0.14s ease;
+}
+.persona-play:not(:disabled):hover {
+  background: color-mix(in oklab, var(--amber) 14%, transparent);
+}
+.persona-play:not(:disabled):active { transform: translateY(0) scale(0.97); }
+.persona-play:disabled { cursor: progress; }
+
+/* Tarjeta de letrista con colección reproducible: leve elevación al hover
+   (acompaña el botón que se realza). */
+article:has(.persona-play) {
+  transition: border-color 0.18s ease, box-shadow 0.22s ease, transform 0.14s ease;
+}
+article:has(.persona-play):hover {
+  border-color: var(--m-line);
+}
+
+/* Chips kbd contiguos (par ⇧↑↓ de volumen): separación mínima agradable */
+.kbd + .kbd { margin-left: 0.15rem; }
+
+@media (prefers-reduced-motion: reduce) {
+  .toast-action-warm, .persona-play, article:has(.persona-play) { transition: none; }
+  .persona-play:not(:disabled):hover, article:has(.persona-play):hover { transform: none; }
+}
+
+/* Portada del reproductor ampliado: crece con la altura de la ventana para que la pantalla entera quepa sin scroll */
+.np-cover { width: clamp(6rem, calc(100dvh - 32rem), 17.5rem); }
+@media (min-width: 640px) { .np-cover { width: clamp(6rem, calc(100dvh - 36rem), 20rem); } }
+@media (min-width: 768px) { .np-cover { width: clamp(6.5rem, calc(100dvh - 33rem), 20rem); } }
+
+/* «Materiales» de Crear: desde 1366 px es una columna que scrollea con la página y ocupa todo el alto, sin márgenes:
+   sube hasta el header, baja hasta el pie y llega al borde derecho (compensa el ancho máximo centrado y el padding del contenido). */
+@media (min-width: 1366px) {
+  .wiz-review {
+    margin: -1.5rem calc(-1 * ((100cqw - min(100cqw, 80rem)) / 2 + 1.5rem)) -6rem 0;
+    padding-left: 1.25rem;
+    padding-right: 1.25rem;
+    padding-top: 3rem; /* compensa el margen negativo y deja el título bajo el header */
+    padding-bottom: 6rem;
+  }
+}
+
+/* «Estudio de letras»: modal más amplio (casi todo el ancho de la ventana, con un tope en pantallas enormes) */
+.studio-dialog { width: 96vw; max-width: min(96vw, 100rem); }
+
+/* «Estudio de letras»: cápsula pegada al borde izquierdo del panel (compensa su padding: 1,25 rem / 1,75 rem) */
+.studio-cap { margin-left: -1.25rem; width: calc(100% + 1.25rem); }
+@media (min-width: 640px) { .studio-cap { margin-left: -1.75rem; width: calc(100% + 1.75rem); } }
+
+/* Cápsulas dentro de un diálogo: compensan su padding de 1,5 rem para pegarse al borde izquierdo */
+.dialog-cap { margin-left: -1.5rem; width: calc(100% + 1.5rem); }
+
+/* Cápsula dentro del panel «Materiales»: compensa el padding del panel (1 rem, 1,5 rem desde 640 px y 1,25 rem como columna lateral) para pegarse al borde izquierdo */
+.wiz-cap { margin-left: -1rem; width: calc(100% + 1rem); }
+@media (min-width: 640px) { .wiz-cap { margin-left: -1.5rem; width: calc(100% + 1.5rem); } }
+@media (min-width: 1366px) { .wiz-cap { margin-left: -1.25rem; width: calc(100% + 1.25rem); } }
+
+/* «Crear mi canción» en pantallas chicas: pegado al borde izquierdo (compensa el padding del contenido: 1 rem, 1,5 rem desde 640 px) */
+.wiz-create-bar { margin-left: -1rem; width: calc(100% + 1rem); }
+@media (min-width: 640px) { .wiz-create-bar { margin-left: -1.5rem; width: calc(100% + 1.5rem); } }
+
+/* «Crear mi canción» en escritorio: ocupa todo el ancho de la columna del gráfico y se pega al borde izquierdo (compensa -ml-6) */
+/* … y llega solo hasta el borde derecho del dibujo, que está centrado en la columna: (ancho de la columna + ancho del dibujo) / 2 + el borde que se compensa */
+@media (min-width: 1366px) {
+  .wiz-create-bar {
+    --wl: calc(min(100cqw, 80rem) - 27rem);
+    width: calc((var(--wl) + min(var(--wl), 640px, max(480px, 100dvh - 17rem))) / 2 + 1.5rem);
+  }
+}
+
+/* Cápsula dentro del diálogo «Crear voz»: compensa el padding del cuerpo (1,25 rem, 1,5 rem desde 640 px) para pegarse al borde izquierdo */
+.voice-cap { margin-left: -1.25rem; width: calc(100% + 1.25rem); }
+@media (min-width: 640px) { .voice-cap { margin-left: -1.5rem; width: calc(100% + 1.5rem); } }
+
+/* Barras de onda mientras se graba la voz: cada una late sola; --m es su amplitud mínima (sube con el nivel del micrófono) */
+@keyframes rec-bar { 0%, 100% { transform: scaleY(var(--m, 0.3)); } 50% { transform: scaleY(1); } }
+.rec-bar { transform-origin: center; animation: rec-bar var(--d, 1s) ease-in-out var(--dl, 0s) infinite; }
+@media (prefers-reduced-motion: reduce) { .rec-bar { animation: none; transform: scaleY(var(--m, 0.5)); } }

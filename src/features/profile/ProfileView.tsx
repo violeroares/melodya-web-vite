@@ -1,0 +1,1146 @@
+
+/**
+ * MELODYA WEB — Perfil (rutas #/profile y #/profile/settings; auth requerida).
+ * Tabs: Perfil · Seguridad · Actividad · Configuración (hash por tab → linkable).
+ * Contrato real (audit §2.1, §2.2, §2.5, §2.7):
+ *  • GET/PATCH /users/me · POST /users/me/avatar (máx 5MB, image/*) · POST /users/me/voice-consent
+ *  • POST /auth/change-password · POST /auth/logout · POST /auth/logout-all
+ *  • GET /generations (actividad reciente).
+ * Las preferencias de "Configuración" son SOLO de este navegador (localStorage):
+ * el backend no tiene endpoints de preferencias (BACKEND GAP, audit §15).
+ */
+import { ActivityHistory } from '@/features/activity/ActivityHistory';
+import React, { useRef, useState } from 'react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import {
+  AudioLines, Ban, Camera, Check, CheckCircle2, Coins, Crown, Heart, ImagePlus, KeyRound, Loader2, LogOut,
+  Music4, Music2, Plus, Settings2, ShieldCheck, Trash2, Unlock, User, UserMinus, UserPlus, Users, X, Zap,
+} from 'lucide-react';
+import { authApi, communityApi, profileApi } from '@/lib/api';
+import { toUserMessage } from '@/lib/errors';
+import { navigate, useRoute } from '@/lib/router';
+import { useAuthStore } from '@/stores/auth';
+import { formatNumber, useCredits } from '@/hooks';
+import { useToast } from '@/hooks/use-toast';
+import type { CommunityUserCard, MeProfile, Paginated } from '@/types';
+import { cn } from '@/lib/utils';
+import { EmptyState, ErrorState, LoadingRows, SectionHeader, AuthAvatar, AuthImage } from '@/components/common';
+import { SegmentedTabs } from '@/components/common/SegmentedTabs';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent } from '@/components/ui/card';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Switch } from '@/components/ui/switch';
+import { Textarea } from '@/components/ui/textarea';
+
+/* ── Tabs (hash-linkable: /profile, /profile/security, /profile/activity, /profile/settings) ── */
+const PROFILE_TABS = [
+  { key: 'profile', label: 'Perfil', icon: User },
+  { key: 'security', label: 'Seguridad', icon: ShieldCheck },
+  { key: 'activity', label: 'Mi actividad', icon: Music4 },
+  { key: 'community', label: 'Comunidad', icon: Users },
+  { key: 'settings', label: 'Configuración', icon: Settings2 },
+] as const;
+type ProfileTabKey = (typeof PROFILE_TABS)[number]['key'];
+
+function tabFromPath(path: string): ProfileTabKey {
+  const seg = path.replace(/^\/profile\/?/, '').split('/')[0];
+  return PROFILE_TABS.find((t) => t.key === seg)?.key ?? 'profile';
+}
+
+const fmtDate = (d: string | null | undefined) =>
+  d ? new Date(d).toLocaleDateString('es-AR', { day: 'numeric', month: 'long', year: 'numeric' }) : '';
+
+
+/* ── Autorización de uso de voz (v1 — texto honesto, audit §2.2) ── */
+const VOICE_CONSENT_VERSION = '1';
+const VOICE_CONSENT_PARAGRAPHS = [
+  'Autorizo a Melodya a procesar mis muestras de voz para crear una versión sintética de mi voz, únicamente para generar canciones en mi cuenta.',
+  'Mis muestras se usan solamente para crear esa versión sintética: no se comparten con otras personas ni se usan para entrenar voces de terceros.',
+  'Puedo revocar este consentimiento en cualquier momento eliminando mis muestras de voz desde la biblioteca.',
+  'Me comprometo a no usar esta función para suplantar la voz ni la identidad de otras personas.',
+];
+
+export function ProfileView() {
+  const { path } = useRoute();
+  const tab = tabFromPath(path);
+  const user = useAuthStore((s) => s.user);
+
+  if (!user) {
+    return (
+      <div className="view-in flex min-h-[40vh] items-center justify-center" aria-busy="true">
+        <Loader2 className="h-8 w-8 animate-spin text-amber-strong" aria-hidden />
+        <span className="sr-only">Cargando tu perfil…</span>
+      </div>
+    );
+  }
+
+  return (
+    <div className="view-in">
+      <header className="mb-6">
+        <h1 className="font-display text-2xl font-extrabold tracking-tight text-foreground sm:text-3xl">Tu perfil</h1>
+        <p className="mt-1 text-sm text-muted-foreground">Quién sos en Melodya, tu seguridad y tu actividad.</p>
+      </header>
+
+      <ProfileHeaderCard user={user} />
+
+      {/* Pestañas: mismo grupo segmentado que la Biblioteca */}
+      <SegmentedTabs
+        tabs={PROFILE_TABS}
+        value={tab}
+        onChange={(key) => navigate(key === 'profile' ? '/profile' : `/profile/${key}`)}
+        ariaLabel="Secciones del perfil"
+        className="mb-6 mt-6"
+      />
+
+      <div key={tab} className="view-in">
+        {tab === 'profile' && <ProfileTab user={user} />}
+        {tab === 'security' && <SecurityTab />}
+        {tab === 'activity' && <ActivityTab />}
+        {tab === 'community' && <CommunityTab user={user} />}
+        {tab === 'settings' && <SettingsTab />}
+      </div>
+    </div>
+  );
+}
+
+/* ── Header: portada + avatar con upload + identidad + badges ── */
+function ProfileHeaderCard({ user }: { user: MeProfile }) {
+  const qc = useQueryClient();
+  const { toast } = useToast();
+  const avatarInput = useRef<HTMLInputElement>(null);
+  const coverInput = useRef<HTMLInputElement>(null);
+  const [uploadingAvatar, setUploadingAvatar] = useState(false);
+  const [uploadingCover, setUploadingCover] = useState(false);
+  const [removingCover, setRemovingCover] = useState(false);
+  const { data: credits } = useCredits();
+  const balance = credits?.balance ?? user.creditsBalance;
+
+  const checkImage = (file: File, kind: string) => {
+    if (file.size > 5 * 1024 * 1024) {
+      toast({ title: `La ${kind} es demasiado grande`, description: 'Elegí una imagen de hasta 5 MB.', variant: 'destructive' });
+      return false;
+    }
+    return true;
+  };
+
+  const onAvatarFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = ''; // permitir volver a elegir el mismo archivo
+    if (!file || !checkImage(file, 'foto')) return;
+    setUploadingAvatar(true);
+    try {
+      await profileApi.uploadAvatar(file);
+      await useAuthStore.getState().loadMe();
+      void qc.invalidateQueries({ queryKey: ['me'] });
+      toast({ title: 'Foto de perfil actualizada' });
+    } catch (err) {
+      toast({ title: 'No pudimos actualizar tu foto', description: toUserMessage(err), variant: 'destructive' });
+    } finally {
+      setUploadingAvatar(false);
+    }
+  };
+
+  /* v0.19 — portada del perfil: banner que ven los demás en tu perfil público. */
+  const onCoverFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file || !checkImage(file, 'portada')) return;
+    setUploadingCover(true);
+    try {
+      await profileApi.uploadCover(file);
+      await useAuthStore.getState().loadMe();
+      void qc.invalidateQueries({ queryKey: ['me'] });
+      toast({ title: 'Portada actualizada', description: 'Ya se ve en tu perfil público.' });
+    } catch (err) {
+      toast({ title: 'No pudimos actualizar tu portada', description: toUserMessage(err), variant: 'destructive' });
+    } finally {
+      setUploadingCover(false);
+    }
+  };
+
+  const onRemoveCover = async () => {
+    setRemovingCover(true);
+    try {
+      await profileApi.removeCover();
+      await useAuthStore.getState().loadMe();
+      void qc.invalidateQueries({ queryKey: ['me'] });
+      toast({ title: 'Portada quitada' });
+    } catch (err) {
+      toast({ title: 'No pudimos quitar la portada', description: toUserMessage(err), variant: 'destructive' });
+    } finally {
+      setRemovingCover(false);
+    }
+  };
+
+  const coverBusy = uploadingCover || removingCover;
+
+  const overlayBtn =
+    'flex h-9 cursor-pointer items-center gap-1.5 rounded-full border border-white/15 bg-black/45 px-3 text-xs font-semibold text-white backdrop-blur-sm transition-all hover:bg-black/65 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white disabled:cursor-wait disabled:opacity-60';
+
+  return (
+    <Card className="py-0 overflow-hidden rounded-cover border-border/70 bg-surface">
+      {/* Portada (v0.19) con identidad superpuesta: imagen subida o gradiente de la marca */}
+      <div className="group/cover relative aspect-video max-h-80 min-h-64 w-full" role="img" aria-label={user.coverImageUrl ? `Portada de ${user.name}` : 'Sin portada'}>
+        <AuthImage src={user.coverImageUrl} alt={`Portada de ${user.name}`} className="absolute inset-0 h-full w-full">
+          <div className="absolute inset-0 bg-voice" aria-hidden>
+            <div className="absolute -left-6 -top-10 h-32 w-32 rounded-full bg-amber/20 blur-2xl" aria-hidden />
+            <div className="absolute -right-8 top-6 h-28 w-28 rounded-full bg-coral/20 blur-2xl" aria-hidden />
+            <div className="absolute bottom-2 left-1/3 h-20 w-40 rounded-full bg-white/5 blur-xl" aria-hidden />
+          </div>
+        </AuthImage>
+        <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/85 via-black/30 to-transparent" aria-hidden />
+
+        {/* Controles de portada: arriba a la derecha, siempre visibles (mobile no tiene hover) */}
+        <div className="absolute right-3 top-3 flex items-center gap-1.5">
+          {user.coverImageUrl && (
+            <button
+              type="button"
+              onClick={onRemoveCover}
+              disabled={coverBusy}
+              aria-label="Quitar la portada del perfil"
+              title="Quitar portada"
+              className={cn(overlayBtn, 'w-9 justify-center px-0 hover:bg-destructive/80')}
+            >
+              {removingCover ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <Trash2 className="h-4 w-4" aria-hidden />}
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={() => coverInput.current?.click()}
+            disabled={coverBusy}
+            aria-label={user.coverImageUrl ? 'Cambiar la portada del perfil' : 'Agregar una portada al perfil'}
+            title={user.coverImageUrl ? 'Cambiar portada' : 'Agregar portada'}
+            className={overlayBtn}
+          >
+            {uploadingCover ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <ImagePlus className="h-4 w-4" aria-hidden />}
+            <span className="hidden sm:inline">{user.coverImageUrl ? 'Cambiar' : 'Agregar'} portada</span>
+          </button>
+        </div>
+        <input ref={coverInput} type="file" accept="image/*" className="hidden" onChange={onCoverFile} aria-label="Subir imagen de portada" />
+
+        {/* Identidad: avatar (con upload) + nombre + email */}
+        <div className="absolute inset-x-0 bottom-0 flex flex-col gap-4 p-4 sm:p-6 lg:flex-row lg:items-end lg:justify-between">
+          <div className="flex min-w-0 items-center gap-4">
+          <div className="group relative shrink-0">
+            <span className="block rounded-full ring-2 ring-white/20" aria-hidden>
+              <AuthAvatar src={user.avatarUrl} name={user.name} className="h-20 w-20 border-0 sm:h-24 sm:w-24" fallbackClassName="font-display text-3xl font-extrabold" />
+            </span>
+            <button
+              type="button"
+              onClick={() => avatarInput.current?.click()}
+              disabled={uploadingAvatar}
+              aria-label="Cambiar tu foto de perfil"
+              className="absolute inset-0 flex cursor-pointer items-center justify-center rounded-full bg-black/60 opacity-0 transition-opacity focus-visible:opacity-100 group-hover:opacity-100 disabled:cursor-wait"
+            >
+              {uploadingAvatar ? (
+                <Loader2 className="h-6 w-6 animate-spin text-white" aria-hidden />
+              ) : (
+                <Camera className="h-6 w-6 text-white" aria-hidden />
+              )}
+            </button>
+            <input ref={avatarInput} type="file" accept="image/*" className="hidden" onChange={onAvatarFile} aria-label="Subir foto de perfil" />
+          </div>
+          <div className="min-w-0">
+            <h2 className="truncate font-display text-2xl font-extrabold tracking-tight text-white drop-shadow sm:text-4xl">{user.name}</h2>
+            <p className="truncate text-sm text-white/80">{user.email}</p>
+            <p className="mt-0.5 text-xs text-white/65">Miembro desde {fmtDate(user.createdAt)}</p>
+          </div>
+          </div>
+
+          {/* Fichas y plan, a la derecha */}
+          <div className="flex shrink-0 flex-wrap items-center gap-2">
+            <Badge variant="outline" className="gap-1.5 border-white/20 bg-black/45 text-white backdrop-blur-sm">
+              <Zap className="h-3.5 w-3.5 text-amber" aria-hidden /> {balance.toLocaleString('es-AR')} fichas
+            </Badge>
+            {(user.effectivePlan ?? user.subscription?.plan) && (
+              <Badge variant="outline" className="gap-1.5 border-white/20 bg-black/45 text-white backdrop-blur-sm">
+                <Crown className="h-3.5 w-3.5 text-amber" aria-hidden /> Plan {(user.effectivePlan ?? user.subscription!.plan).name}
+              </Badge>
+            )}
+          </div>
+        </div>
+      </div>
+    </Card>
+  );
+}
+
+/* ── Tab Perfil: datos + géneros + bio pública + autorización de voz ── */
+const MAX_GENRES = 5;
+
+function ProfileTab({ user }: { user: MeProfile }) {
+  const qc = useQueryClient();
+  const { toast } = useToast();
+  const [name, setName] = useState(user.name);
+  const [bio, setBio] = useState(user.bio ?? '');
+  /* v0.19 — géneros musicales (hasta 5): chips rápidos al crear canciones. */
+  const [genres, setGenres] = useState<string[]>(user.genres ?? []);
+  const [genreInput, setGenreInput] = useState('');
+  const [consentOpen, setConsentOpen] = useState(false);
+  const [consentChecked, setConsentChecked] = useState(false);
+
+  const genreExists = (g: string) => genres.some((x) => x.toLowerCase() === g.toLowerCase());
+  const canAddGenre = genres.length < MAX_GENRES;
+
+  const addGenre = (raw: string) => {
+    const g = raw.trim().slice(0, 40);
+    if (!g || !canAddGenre || genreExists(g)) {
+      setGenreInput('');
+      return;
+    }
+    setGenres([...genres, g]);
+    setGenreInput('');
+  };
+
+  const removeGenre = (g: string) => setGenres(genres.filter((x) => x !== g));
+
+  const saveMutation = useMutation({
+    mutationFn: () =>
+      profileApi.update({
+        name: name.trim(),
+        bio: bio.trim() || null,
+        genres, // hasta 5; [] limpia
+      }),
+    onSuccess: async () => {
+      await useAuthStore.getState().loadMe();
+      void qc.invalidateQueries({ queryKey: ['me'] });
+      toast({ title: 'Perfil actualizado', description: 'Tus datos ya están en Melodya.' });
+    },
+    onError: (err) => toast({ title: 'No pudimos guardar los cambios', description: toUserMessage(err), variant: 'destructive' }),
+  });
+
+  const consentMutation = useMutation({
+    mutationFn: () => profileApi.acceptVoiceConsent(VOICE_CONSENT_VERSION),
+    onSuccess: async () => {
+      await useAuthStore.getState().loadMe();
+      void qc.invalidateQueries({ queryKey: ['me'] });
+      setConsentOpen(false);
+      setConsentChecked(false);
+      toast({ title: 'Autorización registrada', description: 'Ya podés subir muestras de tu voz y clonarla para tus canciones.' });
+    },
+    onError: (err) => toast({ title: 'No pudimos registrar la autorización', description: toUserMessage(err), variant: 'destructive' }),
+  });
+
+  const nameChanged = name.trim() !== user.name && name.trim().length >= 2;
+  const bioChanged = (bio.trim() || null) !== (user.bio ?? null);
+  const genresChanged = JSON.stringify(genres) !== JSON.stringify(user.genres ?? []);
+  const formDirty = nameChanged || bioChanged || genresChanged;
+  const consentAccepted = !!user.voiceConsentAcceptedAt;
+
+  return (
+    <div className="space-y-4">
+      {/* Datos */}
+      <Card className="rounded-cover border-border/70 bg-surface">
+        <CardContent className="p-6">
+          <h3 className="font-display text-lg font-bold text-foreground">Tus datos</h3>
+          <div className="mt-4 grid gap-5">
+            <div className="grid gap-2">
+              <Label htmlFor="profile-name">Nombre</Label>
+              <Input
+                id="profile-name"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                maxLength={80}
+                autoComplete="name"
+                placeholder="Cómo querés que te llamemos"
+              />
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="profile-email">Email</Label>
+              <Input id="profile-email" value={user.email} readOnly className="text-muted-foreground" />
+              <p className="text-xs text-muted-foreground">El email no se puede cambiar.</p>
+            </div>
+            {/* v0.19 — géneros musicales (hasta 5): input + Añadir → chips removibles */}
+            <div className="grid gap-2">
+              <div className="flex items-baseline justify-between gap-2">
+                <Label htmlFor="profile-genre">Géneros musicales</Label>
+                <span
+                  className={cn(
+                    'text-[11px] tabular-nums',
+                    genres.length >= MAX_GENRES ? 'font-semibold text-amber-strong' : 'text-muted-foreground'
+                  )}
+                  aria-live="polite"
+                >
+                  {genres.length}/{MAX_GENRES}
+                </span>
+              </div>
+              <div className="flex gap-2">
+                <div className="relative flex-1">
+                  <Music2 className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" aria-hidden />
+                  <Input
+                    id="profile-genre"
+                    value={genreInput}
+                    onChange={(e) => setGenreInput(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key !== 'Enter') return;
+                      e.preventDefault(); // Enter añade el género, no envía nada
+                      addGenre(genreInput);
+                    }}
+                    maxLength={40}
+                    disabled={!canAddGenre}
+                    placeholder={canAddGenre ? 'Ej.: rock, cumbia, trap…' : 'Ya tenés 5: quitá uno para cambiar'}
+                    aria-describedby="profile-genres-hint"
+                    className="h-11 rounded-xl pl-10 pr-4 disabled:opacity-60"
+                  />
+                </div>
+                <Button
+                  type="button"
+                  onClick={() => addGenre(genreInput)}
+                  disabled={!canAddGenre || genreInput.trim().length === 0 || genreExists(genreInput)}
+                  className="h-11 shrink-0 rounded-xl border-amber/40 bg-amber/15 text-amber-strong hover:border-amber hover:bg-amber/25 hover:text-amber-strong"
+                >
+                  <Plus className="h-4 w-4" aria-hidden />
+                  Añadir
+                </Button>
+              </div>
+              {genres.length > 0 && (
+                <ul className="flex flex-wrap gap-2 pt-0.5" aria-label="Tus géneros musicales">
+                  {genres.map((g) => (
+                    <li
+                      key={g}
+                      className="inline-flex items-center gap-1.5 rounded-full border border-amber/50 bg-amber/15 px-3 py-1 text-xs font-semibold text-amber-strong"
+                    >
+                      {g}
+                      <button
+                        type="button"
+                        onClick={() => removeGenre(g)}
+                        aria-label={`Quitar el género ${g}`}
+                        className="-mr-1 rounded-full p-1 text-amber-strong/70 transition-colors hover:bg-amber/25 hover:text-foreground"
+                      >
+                        <X className="h-3 w-3" aria-hidden />
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+              <p id="profile-genres-hint" className="text-xs text-muted-foreground">
+                Hasta {MAX_GENRES}. Te los ofrecemos como chips rápidos cuando creás una canción, y se ven en tu perfil público.
+              </p>
+            </div>
+            <div className="grid gap-2">
+              <div className="flex items-baseline justify-between gap-2">
+                <Label htmlFor="profile-bio">Bio pública</Label>
+                <span className="text-[11px] tabular-nums text-muted-foreground" aria-live="polite">
+                  {bio.length}/500
+                </span>
+              </div>
+              <Textarea
+                id="profile-bio"
+                value={bio}
+                onChange={(e) => setBio(e.target.value)}
+                maxLength={500}
+                rows={4}
+                placeholder="Contale a la comunidad qué música hacés…"
+                aria-describedby="profile-bio-hint"
+                className="min-h-24 resize-y rounded-xl"
+              />
+              <p id="profile-bio-hint" className="text-xs text-muted-foreground">
+                Se muestra en tu perfil público de la comunidad. Dejarla vacía la quita.
+              </p>
+            </div>
+            <Button
+              onClick={() => saveMutation.mutate()}
+              disabled={!formDirty || saveMutation.isPending}
+              className="w-full rounded-full gradient-warm text-primary-foreground hover:text-primary-foreground sm:w-auto sm:self-start"
+            >
+              {saveMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <Check className="h-4 w-4" aria-hidden />}
+              Guardar cambios
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Autorización de uso de voz */}
+      <Card className="rounded-cover border-border/70 bg-surface">
+        <CardContent className="p-6">
+          <div className="flex items-start gap-4">
+            <span
+              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-amber/10 text-amber-strong"
+              aria-hidden
+            >
+              <AudioLines className="h-5 w-5" />
+            </span>
+            <div className="min-w-0">
+              <h3 className="font-display text-lg font-bold text-foreground">Autorización de uso de voz</h3>
+              {!consentAccepted ? (
+                <>
+                  <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
+                    Para subir muestras de tu voz y crear una versión sintética que cante tus canciones, necesitamos tu
+                    autorización explícita. Es tu voz: vos decidís qué pasa con ella y podés revocarla cuando quieras.
+                  </p>
+                  <Button
+                    variant="outline"
+                    className="mt-4 rounded-full border-amber/40 bg-amber/10 text-amber-strong hover:border-amber hover:bg-amber/20 hover:text-amber-strong"
+                    onClick={() => setConsentOpen(true)}
+                  >
+                    Leer y aceptar
+                  </Button>
+                </>
+              ) : (
+                <p className="mt-2 flex flex-wrap items-center gap-1.5 text-sm font-medium text-success">
+                  <CheckCircle2 className="h-4.5 w-4.5" aria-hidden />
+                  Aceptada el {fmtDate(user.voiceConsentAcceptedAt)} (versión {user.voiceConsentVersion ?? VOICE_CONSENT_VERSION})
+                </p>
+              )}
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Dialog de consentimiento */}
+      <Dialog open={consentOpen} onOpenChange={setConsentOpen}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="font-display">Autorización de uso de voz</DialogTitle>
+            <DialogDescription>Leé con calma: es corto y está en cristiano.</DialogDescription>
+          </DialogHeader>
+          <div className="max-h-72 space-y-3 overflow-y-auto rounded-xl bg-surface-2 p-4 text-sm leading-relaxed text-foreground/90">
+            {VOICE_CONSENT_PARAGRAPHS.map((p, i) => (
+              <p key={i}>{p}</p>
+            ))}
+            <p className="text-xs text-muted-foreground">Versión {VOICE_CONSENT_VERSION}</p>
+          </div>
+          <div className="flex items-start gap-3">
+            <Checkbox
+              id="voice-consent-checkbox"
+              checked={consentChecked}
+              onCheckedChange={(v) => setConsentChecked(v === true)}
+              aria-label="Acepto la autorización de uso de voz"
+            />
+            <Label htmlFor="voice-consent-checkbox" className="text-sm font-normal leading-snug text-foreground">
+              Acepto la autorización de uso de voz
+            </Label>
+          </div>
+          <DialogFooter>
+            <Button variant="ghost" className="rounded-full" onClick={() => setConsentOpen(false)}>
+              Cancelar
+            </Button>
+            <Button
+              onClick={() => consentMutation.mutate()}
+              disabled={!consentChecked || consentMutation.isPending}
+              className="rounded-full gradient-warm text-primary-foreground hover:text-primary-foreground"
+            >
+              {consentMutation.isPending ? (
+                <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+              ) : (
+                <ShieldCheck className="h-4 w-4" aria-hidden />
+              )}
+              Confirmar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
+
+/* ── Tab Seguridad: contraseña + sesiones ── */
+function SecurityTab() {
+  const { toast } = useToast();
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [validationError, setValidationError] = useState<string | null>(null);
+
+  const changeMutation = useMutation({
+    mutationFn: () => useAuthStore.getState().changePassword(currentPassword, newPassword),
+    onSuccess: ({ sessionRenewed }) => {
+      setCurrentPassword('');
+      setNewPassword('');
+      setConfirmPassword('');
+      setValidationError(null);
+      toast(
+        sessionRenewed
+          ? { title: 'Contraseña actualizada', description: 'Cerramos tu sesión en los demás dispositivos. Acá seguís conectado.' }
+          : { title: 'Contraseña actualizada', description: 'Por seguridad se cerraron todas las sesiones: ingresá con tu contraseña nueva.' },
+      );
+    },
+    onError: (err) => toast({ title: 'No pudimos cambiar tu contraseña', description: toUserMessage(err), variant: 'destructive' }),
+  });
+
+  const logoutAllMutation = useMutation({
+    mutationFn: () => authApi.logoutAll(),
+    onSuccess: async () => {
+      await useAuthStore.getState().logout(); // limpia el estado local (logout normal best-effort)
+      navigate('/');
+      toast({ title: 'Sesiones cerradas', description: 'Cerraste tu sesión en todos los dispositivos.' });
+    },
+    onError: (err) => toast({ title: 'No pudimos cerrar las sesiones', description: toUserMessage(err), variant: 'destructive' }),
+  });
+
+  const submit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (newPassword.length < 8 || !/[a-zA-Z]/.test(newPassword) || !/[0-9]/.test(newPassword)) {
+      setValidationError('La contraseña nueva necesita al menos 8 caracteres, con letras y números.');
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      setValidationError('Las contraseñas nuevas no coinciden.');
+      return;
+    }
+    setValidationError(null);
+    changeMutation.mutate();
+  };
+
+  return (
+    <div className="space-y-4">
+      <Card className="rounded-cover border-border/70 bg-surface">
+        <CardContent className="p-6">
+          <h3 className="font-display text-lg font-bold text-foreground">Cambiar contraseña</h3>
+          <form onSubmit={submit} noValidate className="mt-4 grid gap-4">
+            <div className="grid gap-2">
+              <Label htmlFor="current-password">Contraseña actual</Label>
+              <Input
+                id="current-password"
+                type="password"
+                autoComplete="current-password"
+                value={currentPassword}
+                onChange={(e) => setCurrentPassword(e.target.value)}
+                required
+              />
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="new-password">Contraseña nueva</Label>
+              <Input
+                id="new-password"
+                type="password"
+                autoComplete="new-password"
+                value={newPassword}
+                onChange={(e) => setNewPassword(e.target.value)}
+                aria-invalid={!!validationError}
+                required
+              />
+              <p className="text-xs text-muted-foreground">Mínimo 8 caracteres, con letras y números.</p>
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="confirm-password">Confirmá la contraseña nueva</Label>
+              <Input
+                id="confirm-password"
+                type="password"
+                autoComplete="new-password"
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+                aria-invalid={!!validationError}
+                required
+              />
+            </div>
+            {validationError && (
+              <p role="alert" className="text-sm text-destructive">
+                {validationError}
+              </p>
+            )}
+            <Button
+              type="submit"
+              disabled={changeMutation.isPending || !currentPassword || !newPassword || !confirmPassword}
+              className="w-full rounded-full gradient-warm text-primary-foreground hover:text-primary-foreground sm:w-auto sm:self-start"
+            >
+              {changeMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <KeyRound className="h-4 w-4" aria-hidden />}
+              Cambiar contraseña
+            </Button>
+          </form>
+        </CardContent>
+      </Card>
+
+      <Card className="rounded-cover border-border/70 bg-surface">
+        <CardContent className="p-6">
+          <h3 className="font-display text-lg font-bold text-foreground">Sesiones abiertas</h3>
+          <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
+            ¿Entraste desde otro dispositivo y no querés dejarlo activo? Cerrá tu sesión en todos lados de una vez.
+          </p>
+          <AlertDialog>
+            <AlertDialogTrigger asChild>
+              <Button
+                variant="outline"
+                className="mt-4 rounded-full border-destructive/40 text-destructive hover:border-destructive hover:bg-destructive/10 hover:text-destructive"
+              >
+                <LogOut className="h-4 w-4" aria-hidden /> Cerrar sesión en todos los dispositivos
+              </Button>
+            </AlertDialogTrigger>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle className="font-display">¿Cerrar sesión en todos lados?</AlertDialogTitle>
+                <AlertDialogDescription>
+                  Se cierra tu sesión en este navegador y en cualquier otro dispositivo donde hayas ingresado. Vas a tener
+                  que volver a iniciar sesión.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel className="rounded-full">Cancelar</AlertDialogCancel>
+                <AlertDialogAction
+                  className="rounded-full bg-destructive text-background hover:bg-destructive/90"
+                  onClick={(e) => {
+                    e.preventDefault(); // mantener el dialog abierto mientras viaja el request
+                    logoutAllMutation.mutate();
+                  }}
+                >
+                  {logoutAllMutation.isPending && <Loader2 className="h-4 w-4 animate-spin" aria-hidden />}
+                  Cerrar todo
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+/* ── Tab Mi actividad: el historial de fichas (compras, generaciones y devoluciones) con las generaciones integradas + link a fichas ── */
+function ActivityTab() {
+  return (
+    <div className="space-y-4">
+      <ActivityHistory />
+      <div className="text-center">
+        <Button variant="link" className="text-amber-strong" onClick={() => navigate('/plans')}>
+          <Coins className="h-4 w-4" aria-hidden /> Ver fichas
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+/* ── Tab Comunidad: a quién seguís, quién te sigue, bloqueados ──
+ * Contrato real (v0.15): GET /community/users/:id/follows|followers +
+ * GET /users/me/blocks · POST|DELETE /users/:id/follow y /users/:id/block. */
+function CommunityTab({ user }: { user: MeProfile }) {
+  const followsQuery = useQuery({
+    queryKey: ['community', 'my-follows'],
+    queryFn: () => communityApi.userFollows(user.id, { limit: 50 }),
+  });
+  const followersQuery = useQuery({
+    queryKey: ['community', 'my-followers'],
+    queryFn: () => communityApi.userFollowers(user.id),
+  });
+  const blocksQuery = useQuery({
+    queryKey: ['community', 'my-blocks'],
+    queryFn: () => profileApi.blocks(),
+  });
+
+  const follows = followsQuery.data?.items ?? [];
+  const followers = followersQuery.data?.items ?? [];
+  const blocks = blocksQuery.data?.items ?? [];
+
+  return (
+    <div className="space-y-4">
+      {/* A quién seguís */}
+      <Card className="rounded-cover border-border/70 bg-surface">
+        <CardContent className="p-5 sm:p-6">
+          <h3 className="font-display text-lg font-bold text-foreground">A quién seguís</h3>
+          <p className="mt-1 text-sm leading-relaxed text-muted-foreground">
+            Los creadores cuyo contenido querés ver primero en la comunidad.
+          </p>
+          <div className="mt-3">
+            {followsQuery.isLoading ? (
+              <LoadingRows count={3} />
+            ) : followsQuery.isError ? (
+              <ErrorState
+                message={toUserMessage(followsQuery.error, 'No pudimos cargar a quién seguís.')}
+                onRetry={() => void followsQuery.refetch()}
+                className="py-6"
+              />
+            ) : follows.length === 0 ? (
+              <EmptyState
+                variant="studio"
+                actionIcon={null}
+                icon={<UserPlus className="h-6 w-6" />}
+                title="Todavía no seguís a nadie"
+                description="Andá a la comunidad, escuchá lo que están creando y seguí a quien te guste."
+                actionLabel="Explorar la comunidad"
+                actionTo="/community"
+              />
+            ) : (
+              <ul className="divide-y divide-border/60" aria-label="Creadores que seguís">
+                {follows.map((row) => (
+                  <FollowsRow key={row.id} row={row} />
+                ))}
+              </ul>
+            )}
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Quién te sigue */}
+      <Card className="rounded-cover border-border/70 bg-surface">
+        <CardContent className="p-5 sm:p-6">
+          <h3 className="font-display text-lg font-bold text-foreground">Quién te sigue</h3>
+          <p className="mt-1 text-sm leading-relaxed text-muted-foreground">
+            Dejá el gesto devuelto: seguilos con un toque para no perderte lo que publican.
+          </p>
+          <div className="mt-3">
+            {followersQuery.isLoading ? (
+              <LoadingRows count={3} />
+            ) : followersQuery.isError ? (
+              <ErrorState
+                message={toUserMessage(followersQuery.error, 'No pudimos cargar quién te sigue.')}
+                onRetry={() => void followersQuery.refetch()}
+                className="py-6"
+              />
+            ) : followers.length === 0 ? (
+              <EmptyState
+                variant="studio"
+                actionIcon={null}
+                icon={<Users className="h-6 w-6" />}
+                title="Todavía no te sigue nadie"
+                description="Publicá tus canciones y compartilas: cuando alguien te siga, lo vas a ver acá."
+                actionLabel="Explorar la comunidad"
+                actionTo="/community"
+              />
+            ) : (
+              <ul className="divide-y divide-border/60" aria-label="Creadores que te siguen">
+                {followers.map((row) => (
+                  <FollowersRow key={row.id} row={row} />
+                ))}
+              </ul>
+            )}
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Bloqueados */}
+      <Card className="rounded-cover border-border/70 bg-surface">
+        <CardContent className="p-5 sm:p-6">
+          <h3 className="font-display text-lg font-bold text-foreground">Bloqueados</h3>
+          <p className="mt-1 text-sm leading-relaxed text-muted-foreground">
+            Las personas bloqueadas no ven tu contenido ni pueden seguirte, y vos no ves el suyo.
+          </p>
+          <div className="mt-3">
+            {blocksQuery.isLoading ? (
+              <LoadingRows count={2} />
+            ) : blocksQuery.isError ? (
+              <ErrorState
+                message={toUserMessage(blocksQuery.error, 'No pudimos cargar tus bloqueos.')}
+                onRetry={() => void blocksQuery.refetch()}
+                className="py-6"
+              />
+            ) : blocks.length === 0 ? (
+              <EmptyState
+                icon={<Ban className="h-6 w-6" />}
+                title="No bloqueaste a nadie"
+                description="Si alguien te molesta en la comunidad, podés bloquearlo desde su perfil público."
+                className="py-8"
+              />
+            ) : (
+              <ul className="divide-y divide-border/60" aria-label="Personas bloqueadas">
+                {blocks.map((row) => (
+                  <BlockedRow key={row.id} row={row} />
+                ))}
+              </ul>
+            )}
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+/** Fila base: avatar + nombre (link al perfil público) + acción a la derecha. */
+function CommunityRow({
+  row, meta, action,
+}: {
+  row: CommunityUserCard;
+  meta?: React.ReactNode;
+  action?: React.ReactNode;
+}) {
+  return (
+    <li className="flex items-center gap-3.5 py-3">
+      <button
+        type="button"
+        onClick={() => navigate(`/user/${row.id}`)}
+        aria-label={`Ver el perfil de ${row.name}`}
+        className="flex min-w-0 flex-1 items-center gap-3 rounded-xl p-1 text-left transition-colors hover:bg-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      >
+        <AuthAvatar src={row.avatarUrl} name={row.name} className="h-10 w-10 shrink-0" />
+        <span className="min-w-0 flex-1">
+          <span className="block truncate text-sm font-semibold text-foreground">{row.name}</span>
+          {meta ? <span className="block text-xs text-muted-foreground">{meta}</span> : null}
+        </span>
+      </button>
+      {action}
+    </li>
+  );
+}
+
+/** Fila de "A quién seguís": dejar de seguir con confirmación implícita. */
+function FollowsRow({ row }: { row: CommunityUserCard }) {
+  const qc = useQueryClient();
+  const { toast } = useToast();
+
+  const unfollowMutation = useMutation({
+    mutationFn: () => profileApi.unfollow(row.id),
+    onMutate: async () => {
+      await qc.cancelQueries({ queryKey: ['community', 'my-follows'] });
+      const prev = qc.getQueryData<Paginated<CommunityUserCard>>(['community', 'my-follows']);
+      qc.setQueryData<Paginated<CommunityUserCard>>(['community', 'my-follows'], (old) =>
+        old ? { ...old, items: old.items.filter((it) => it.id !== row.id) } : old
+      );
+      return { prev };
+    },
+    onError: (err, _vars, ctx) => {
+      if (ctx?.prev) qc.setQueryData(['community', 'my-follows'], ctx.prev);
+      toast({ title: 'No pudimos dejar de seguir', description: toUserMessage(err), variant: 'destructive' });
+    },
+    onSuccess: () => {
+      toast({ title: `Dejaste de seguir a ${row.name}`, description: 'Su contenido deja de aparecer en el feed de seguidos.' });
+    },
+    onSettled: () => {
+      void qc.invalidateQueries({ queryKey: ['community'] });
+    },
+  });
+
+  return (
+    <CommunityRow
+      row={row}
+      meta={`${formatNumber(row.followersCount ?? 0)} seguidores`}
+      action={
+        <Button
+          variant="ghost"
+          size="sm"
+          disabled={unfollowMutation.isPending}
+          aria-label={`Dejar de seguir a ${row.name}`}
+          onClick={() => unfollowMutation.mutate()}
+          className="shrink-0 rounded-full px-3 text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
+        >
+          {unfollowMutation.isPending ? (
+            <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+          ) : (
+            <UserMinus className="h-4 w-4" aria-hidden />
+          )}
+          Dejar de seguir
+        </Button>
+      }
+    />
+  );
+}
+
+/** Fila de "Quién te sigue": reciprocar rápido con un Seguir. */
+function FollowersRow({ row }: { row: CommunityUserCard }) {
+  const qc = useQueryClient();
+  const { toast } = useToast();
+  const following = Boolean(row.viewerIsFollowing);
+
+  const followMutation = useMutation({
+    mutationFn: () => profileApi.follow(row.id),
+    onMutate: async () => {
+      await qc.cancelQueries({ queryKey: ['community', 'my-followers'] });
+      const prev = qc.getQueryData<Paginated<CommunityUserCard>>(['community', 'my-followers']);
+      qc.setQueryData<Paginated<CommunityUserCard>>(['community', 'my-followers'], (old) =>
+        old
+          ? { ...old, items: old.items.map((it) => (it.id === row.id ? { ...it, viewerIsFollowing: true } : it)) }
+          : old
+      );
+      return { prev };
+    },
+    onError: (err, _vars, ctx) => {
+      if (ctx?.prev) qc.setQueryData(['community', 'my-followers'], ctx.prev);
+      toast({ title: 'No pudimos seguir', description: toUserMessage(err), variant: 'destructive' });
+    },
+    onSuccess: () => {
+      toast({ title: `Ahora seguís a ${row.name}` });
+    },
+    onSettled: () => {
+      void qc.invalidateQueries({ queryKey: ['community'] });
+    },
+  });
+
+  if (following) {
+    return (
+      <CommunityRow
+        row={row}
+        meta={`${formatNumber(row.followersCount ?? 0)} seguidores · te sigue`}
+      />
+    );
+  }
+
+  return (
+    <CommunityRow
+      row={row}
+      meta={`${formatNumber(row.followersCount ?? 0)} seguidores`}
+      action={
+        <Button
+          variant="outline"
+          size="sm"
+          disabled={followMutation.isPending}
+          aria-label={`Seguir a ${row.name}`}
+          onClick={() => followMutation.mutate()}
+          className="shrink-0 rounded-full border-amber/40 bg-amber/10 text-amber-strong transition-colors hover:border-amber hover:bg-amber/20 hover:text-amber-strong"
+        >
+          {followMutation.isPending ? (
+            <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+          ) : (
+            <UserPlus className="h-4 w-4" aria-hidden />
+          )}
+          Seguir
+        </Button>
+      }
+    />
+  );
+}
+
+/** Fila de "Bloqueados": desbloquear (restaura la visibilidad mutua). */
+function BlockedRow({ row }: { row: CommunityUserCard }) {
+  const qc = useQueryClient();
+  const { toast } = useToast();
+
+  const unblockMutation = useMutation({
+    mutationFn: () => profileApi.unblock(row.id),
+    onSuccess: () => {
+      toast({
+        title: `Desbloqueaste a ${row.name}`,
+        description: 'Ya pueden verse el contenido y seguirse otra vez.',
+      });
+    },
+    onError: (err) => {
+      toast({ title: 'No pudimos desbloquear', description: toUserMessage(err), variant: 'destructive' });
+    },
+    onSettled: () => {
+      void qc.invalidateQueries({ queryKey: ['community', 'my-blocks'] });
+      void qc.invalidateQueries({ queryKey: ['community'] });
+    },
+  });
+
+  return (
+    <CommunityRow
+      row={row}
+      action={
+        <Button
+          variant="ghost"
+          size="sm"
+          disabled={unblockMutation.isPending}
+          aria-label={`Desbloquear a ${row.name}`}
+          onClick={() => unblockMutation.mutate()}
+          className="shrink-0 rounded-full px-3 text-muted-foreground transition-colors hover:bg-amber/10 hover:text-amber-strong"
+        >
+          {unblockMutation.isPending ? (
+            <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+          ) : (
+            <Unlock className="h-4 w-4" aria-hidden />
+          )}
+          Desbloquear
+        </Button>
+      }
+    />
+  );
+}
+
+/* ── Tab Configuración ──
+ * CLIENT-ONLY: estas preferencias viven en el localStorage de este navegador.
+ * El backend no tiene endpoints de preferencias (BACKEND GAP, audit §15) — no inventamos. */
+const PREF_NOTIFICATIONS = 'melodya.prefs.notifications';
+const PREF_AUTOPLAY = 'melodya.prefs.autoplay';
+
+function useLocalPref(key: string, defaultValue: boolean) {
+  // Lazy initializer: lectura pura de localStorage en el primer render (esta vista
+  // vive bajo el hash-router, nunca se renderiza en el servidor; guard igualmente).
+  const [value, setValue] = useState(() => {
+    if (typeof window === 'undefined') return defaultValue;
+    try {
+      const raw = window.localStorage.getItem(key);
+      return raw === null ? defaultValue : raw === '1';
+    } catch {
+      return defaultValue;
+    }
+  });
+  const update = (v: boolean) => {
+    setValue(v);
+    try {
+      window.localStorage.setItem(key, v ? '1' : '0');
+    } catch {
+      /* best-effort */
+    }
+  };
+  return [value, update] as const;
+}
+
+function SettingsTab() {
+  const { toast } = useToast();
+  const [loggingOut, setLoggingOut] = useState(false);
+  const [notifications, setNotifications] = useLocalPref(PREF_NOTIFICATIONS, true);
+  const [autoplay, setAutoplay] = useLocalPref(PREF_AUTOPLAY, false);
+
+  const handleLogout = async () => {
+    setLoggingOut(true);
+    try {
+      await useAuthStore.getState().logout(); // authApi.logout + limpia el estado local
+      navigate('/');
+      toast({ title: 'Sesión cerrada', description: '¡Volvé cuando quieras!' });
+    } finally {
+      setLoggingOut(false);
+    }
+  };
+
+  return (
+    <div className="space-y-4">
+      {/* Preferencias (solo este navegador) */}
+      <Card className="rounded-cover border-border/70 bg-surface">
+        <CardContent className="p-6">
+          <h3 className="font-display text-lg font-bold text-foreground">Preferencias</h3>
+          <div className="mt-2 divide-y divide-border/60">
+            <div className="flex items-center justify-between gap-4 py-4">
+              <div className="min-w-0">
+                <Label htmlFor="pref-notifications" className="text-sm font-medium text-foreground">
+                  Notificaciones de generaciones
+                </Label>
+                <p className="mt-0.5 text-xs leading-relaxed text-muted-foreground">
+                  Avisos en pantalla cuando una generación termina o falla (afecta los toasts).
+                </p>
+              </div>
+              <Switch
+                id="pref-notifications"
+                checked={notifications}
+                onCheckedChange={setNotifications}
+                aria-label="Notificaciones de generaciones"
+              />
+            </div>
+            <div className="flex items-center justify-between gap-4 py-4">
+              <div className="min-w-0">
+                <Label htmlFor="pref-autoplay" className="text-sm font-medium text-foreground">
+                  Reproducción automática
+                </Label>
+                <p className="mt-0.5 text-xs leading-relaxed text-muted-foreground">
+                  Reproducir la canción apenas termina de generarse.
+                </p>
+              </div>
+              <Switch id="pref-autoplay" checked={autoplay} onCheckedChange={setAutoplay} aria-label="Reproducción automática" />
+            </div>
+          </div>
+          <p className="text-xs text-muted-foreground">Estas preferencias se guardan solo en este navegador.</p>
+        </CardContent>
+      </Card>
+
+      {/* Acerca de */}
+      <Card className="rounded-cover border-border/70 bg-surface">
+        <CardContent className="flex flex-col gap-4 p-6 sm:flex-row sm:items-center sm:justify-between">
+          <div className="min-w-0">
+            <h3 className="font-display text-lg font-bold text-foreground">Acerca de Melodya</h3>
+            <p className="mt-1 text-sm text-muted-foreground">Melodya · v1 — web</p>
+          </div>
+          <Button variant="outline" className="shrink-0 rounded-full" onClick={() => navigate('/community')}>
+            <Heart className="h-4 w-4 text-coral" aria-hidden /> Explorar la comunidad
+          </Button>
+        </CardContent>
+      </Card>
+
+      {/* Sesión */}
+      <Card className="rounded-cover border-border/70 bg-surface">
+        <CardContent className="flex flex-col gap-4 p-6 sm:flex-row sm:items-center sm:justify-between">
+          <div className="min-w-0">
+            <h3 className="font-display text-lg font-bold text-foreground">Cerrar sesión</h3>
+            <p className="mt-1 text-sm leading-relaxed text-muted-foreground">
+              Salís de tu cuenta en este dispositivo. Tus canciones quedan guardadas.
+            </p>
+          </div>
+          <Button variant="destructive" className="shrink-0 rounded-full" onClick={() => void handleLogout()} disabled={loggingOut}>
+            {loggingOut ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <LogOut className="h-4 w-4" aria-hidden />}
+            Cerrar sesión
+          </Button>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+export default ProfileView;
