@@ -10,7 +10,7 @@ import { useTheme } from '@/lib/theme';
 import { useRoute, navigate, Link } from '@/lib/router';
 import { useAuthStore } from '@/stores/auth';
 import { notificationsApi } from '@/lib/api';
-import { queryPollDelayMs } from '@/lib/api/resilience';
+import { queryPollDelayMs, rateLimitRemainingMs } from '@/lib/api/resilience';
 import { useCredits, formatNumber } from '@/hooks';
 import { MelodyaLogo, AuthAvatar } from '@/components/common';
 import { openCommandPalette } from '@/components/common/CommandPalette';
@@ -42,7 +42,8 @@ export function Header() {
     enabled: !isGuest,
     /* 30 s normales; con error, backoff (≥ Retry-After si hubo 429) en vez de insistir cada 30 s. */
     refetchInterval: (query) => queryPollDelayMs(query, 30_000),
-    refetchOnWindowFocus: true,
+    /* Al volver a la pestaña se actualiza, salvo durante una pausa por 429 de la API general (se retoma al terminar). */
+    refetchOnWindowFocus: () => rateLimitRemainingMs('api') === 0,
   });
   const unreadCount = unreadData?.count;
 

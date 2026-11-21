@@ -11,6 +11,8 @@ import {
   classifyError,
   noteRateLimit,
   rateLimitRemainingMs,
+  rateLimitScopeOf,
+  retryAfterFromBody,
   retryAfterFromHeaders,
 } from './resilience.ts';
 
@@ -51,6 +53,15 @@ const apiConfig = resolveApiBase(rawEnv);
 export const API_BASE = apiConfig.base;
 /** Mensaje de configuración si la URL del backend falta o es inválida (null = configuración correcta). */
 export const API_CONFIG_ERROR = apiConfig.error;
+
+/** Ruta base de la API (p. ej. «/api»): se descuenta al clasificar la URL de una solicitud por su limitador (rateLimitScopeOf). */
+const API_BASE_PATH = (() => {
+  try {
+    return API_BASE ? new URL(API_BASE).pathname : '';
+  } catch {
+    return '';
+  }
+})();
 
 export class ApiError extends Error {
   code: string;
@@ -226,12 +237,21 @@ export function isDefinitiveRefreshFailure(err: unknown): boolean {
   return kind === 'unauthorized' || kind === 'forbidden';
 }
 
-/** Convierte cualquier error de Axios en ApiError (mensaje humano, estado, código y Retry-After). */
-export function normalizeAxiosError(error: AxiosError<{ error?: { code?: string; message?: string; details?: unknown } }>): ApiError {
+type ErrorBody = { error?: { code?: string; message?: string; details?: unknown; retryAfterSec?: number } };
+
+/**
+ * Convierte cualquier error de Axios en ApiError (mensaje humano, estado, código y Retry-After). En un 429 la espera sale de la cabecera
+ * Retry-After o, si el navegador no puede leerla (CORS), de `error.retryAfterSec` del cuerpo; en un 503 solo de la cabecera.
+ * NO registra la pausa: cada limitador del backend es independiente, así que quien conoce la solicitud (el interceptor, el refresh) la
+ * registra en SU alcance (ver noteRateLimit / rateLimitScopeOf).
+ */
+export function normalizeAxiosError(error: AxiosError<ErrorBody>): ApiError {
   const status = error.response?.status ?? 0;
   const payload = error.response?.data?.error;
-  const retryAfterMs = status === 429 || status === 503 ? retryAfterFromHeaders(error.response?.headers) : undefined;
-  if (status === 429) noteRateLimit(retryAfterMs);
+  const retryAfterMs =
+    status === 429 ? (retryAfterFromHeaders(error.response?.headers) ?? retryAfterFromBody(payload))
+    : status === 503 ? retryAfterFromHeaders(error.response?.headers)
+    : undefined;
   if (payload?.message) return new ApiError(status, payload.code ?? 'ERROR', payload.message, payload.details, retryAfterMs);
   if (error.code === 'ECONNABORTED') return new ApiError(0, 'TIMEOUT', 'La conexión tardó demasiado. Intentá de nuevo.');
   if (!error.response) return new ApiError(0, 'NETWORK', 'No pudimos conectar con Melodya. Revisá tu conexión.');
@@ -250,7 +270,8 @@ export function normalizeAxiosError(error: AxiosError<{ error?: { code?: string;
 export async function performRefresh(): Promise<string> {
   let refreshToken = getRefreshToken();
   if (!refreshToken) throw new ApiError(401, 'UNAUTHORIZED', 'Tu sesión expiró');
-  const blocked = Math.max(refreshBlockedUntil - Date.now(), rateLimitRemainingMs());
+  // Solo cuenta la pausa del limitador del REFRESH: un 429 de la API general o de los archivos no impide renovar la sesión.
+  const blocked = Math.max(refreshBlockedUntil - Date.now(), rateLimitRemainingMs('refresh'));
   if (blocked > 0) throw new ApiError(429, 'RATE_LIMITED', 'Demasiadas solicitudes, probá más tarde', undefined, blocked);
   let lastError: unknown;
   for (let attempt = 0; attempt < 2; attempt++) {
@@ -267,7 +288,8 @@ export async function performRefresh(): Promise<string> {
       lastError = apiErr;
       const kind = classifyError(apiErr);
       if (kind === 'rate-limited') {
-        refreshBlockedUntil = Date.now() + Math.max(rateLimitRemainingMs(), 1000);
+        noteRateLimit((apiErr as ApiError).retryAfterMs, 'refresh');
+        refreshBlockedUntil = Date.now() + Math.max(rateLimitRemainingMs('refresh'), 1000);
         break;
       }
       if (kind !== 'unauthorized') break; // 403, red, 5xx…: sin reintento inmediato
@@ -413,7 +435,10 @@ client.interceptors.response.use(
       }
     }
 
-    return Promise.reject(normalizeAxiosError(error));
+    const normalized = normalizeAxiosError(error);
+    // Cada limitador del backend es independiente: la pausa se registra solo en el alcance de ESTA ruta (login/asistente/admin: ninguna).
+    if (normalized.status === 429) noteRateLimit(normalized.retryAfterMs, rateLimitScopeOf(error.config?.url, API_BASE_PATH));
+    return Promise.reject(normalized);
   }
 );
 

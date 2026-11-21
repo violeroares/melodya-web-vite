@@ -84,7 +84,8 @@ test('refresh → 429: la sesión se CONSERVA, el error lleva Retry-After y no h
   assert.equal(unauthorized, 0, 'un 429 NO cierra la sesión');
   assert.deepEqual(session, tokensBefore, 'los tokens siguen intactos');
   assert.equal(await count('POST /api/auth/refresh'), 1);
-  assert.ok(rateLimitRemainingMs() > 0, 'la compuerta global queda activa');
+  assert.ok(rateLimitRemainingMs('refresh') > 0, 'la pausa del REFRESH queda activa');
+  assert.equal(rateLimitRemainingMs('api'), 0, 'y no bloquea la API general');
 
   // Durante el bloqueo: ni un solo POST /auth/refresh más (cada intento contaría contra el límite).
   await assert.rejects(() => getData('/users/me'), (e) => e.status === 429);
