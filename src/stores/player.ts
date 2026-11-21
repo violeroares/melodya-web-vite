@@ -27,7 +27,8 @@ import { ensureAudioRunning } from '@/lib/audio-viz';
 import { apiFileUrl } from '@/lib/api/client';
 import { songsApi } from '@/lib/api';
 import { authImageMimeType, authImageObjectUrl } from '@/lib/auth-image';
-import { usesAuthenticatedSource, createAuthSource, fetchAudioBlob, audioErrorMessage } from './player-source';
+import { noteRateLimit, rateLimitRemainingMs } from '@/lib/api/resilience';
+import { usesAuthenticatedSource, createAuthSource, fetchAudioBlob, probeAudioAccess, audioErrorMessage, isTransientAudioError, AudioSourceError } from './player-source';
 
 export interface PlayerTrack {
   id: string;
@@ -228,11 +229,17 @@ function seekWhenReady(el: HTMLAudioElement, target: number) {
  * blob. Los errores de autenticación/permiso se informan en `playbackError` con su motivo.
  */
 async function loadAuthenticated(track: PlayerTrack, opts: { autoplay: boolean; position?: number }): Promise<void> {
+  /* El limitador de archivos pidió esperar (429 reciente): no se le pega con otra descarga completa; se informa el motivo real. */
+  if (rateLimitRemainingMs('files') > 0) {
+    usePlayerStore.setState({ isPlaying: false, playbackError: audioErrorMessage(new AudioSourceError(429, 'pausa vigente')) });
+    return;
+  }
   let result;
   try {
     result = await authSource.load(track.audioUrl);
   } catch (err) {
     if (err instanceof Error && err.name === 'AbortError') return;
+    if (err instanceof AudioSourceError && err.status === 429) noteRateLimit(err.retryAfterMs, 'files'); // pausa del alcance de archivos (no frena API ni refresh)
     usePlayerStore.setState({ isPlaying: false, playbackError: audioErrorMessage(err) });
     return;
   }
@@ -794,6 +801,18 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
     if (/^(blob:|data:)/.test(track.audioUrl)) return;
     if (retriedTrack === track.audioUrl) return; // solo un intento por pista
     retriedTrack = track.audioUrl;
+    /* Un <audio> no dice POR QUÉ falló la carga directa. Antes de bajar el archivo ENTERO como blob se averigua con un sondeo de 1 byte: un 429
+       (o un 401/403/404, o la red caída) NO justifica la descarga completa; solo un archivo realmente accesible sigue al fallback autenticado
+       (necesario para pistas privadas). Los fallos transitorios permiten que el usuario vuelva a intentarlo con play. */
+    const fail = (error: AudioSourceError) => {
+      if (error.status === 429) noteRateLimit(error.retryAfterMs, 'files');
+      set({ isPlaying: false, playbackError: audioErrorMessage(error) });
+      if (isTransientAudioError(error)) retriedTrack = null;
+    };
+    if (rateLimitRemainingMs('files') > 0) return fail(new AudioSourceError(429, 'pausa vigente'));
+    const probe = await probeAudioAccess(track.audioUrl, getAccessTokenSync(), new AbortController().signal);
+    if (get().track?.audioUrl !== track.audioUrl) return; // cambió la pista mientras se sondeaba
+    if (!probe.ok) return fail(probe.error);
     await loadAuthenticated(track, { autoplay: true });
   },
 

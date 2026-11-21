@@ -17,6 +17,7 @@ globalThis.localStorage = {
 };
 
 const { authState } = await import('./_helpers/stubs/auth.mjs');
+const { resetRateLimitGate, noteRateLimit, rateLimitRemainingMs } = await import('../src/lib/api/resilience.ts');
 
 // ── dobles ──
 class FakeAudio extends EventTarget {
@@ -60,13 +61,14 @@ function installDoubles() {
       url: String(url),
       headers: init.headers ?? {},
       signal: init.signal,
-      respond: (status = 200, body = 'audio') => resolve(new Response(body, { status })),
+      respond: (status = 200, body = 'audio', headers = {}) => resolve(new Response(status === 204 || status === 304 ? null : body, { status, headers })),
       fail: reject,
     };
     fetchCalls.push(call);
     init.signal?.addEventListener('abort', () => reject(Object.assign(new Error('abortado'), { name: 'AbortError' })));
-    const immediate = auto?.(call.url);
-    if (immediate) call.respond(immediate.status, immediate.body);
+    const immediate = auto?.(call.url, init);
+    if (immediate === 'network') call.fail(new TypeError('fetch failed'));
+    else if (immediate) call.respond(immediate.status, immediate.body, immediate.headers);
   });
   URL.createObjectURL = (blob) => { const u = realCreate.call(URL, blob); blobsCreated.push(u); return u; };
   URL.revokeObjectURL = (u) => { blobsRevoked.push(u); realRevoke.call(URL, u); };
@@ -88,7 +90,7 @@ async function freshStore({ session } = {}) {
   return { store: mod.usePlayerStore, el, mod };
 }
 
-test.beforeEach(() => { authState.accessToken = 'tok-123'; auto = null; installDoubles(); });
+test.beforeEach(() => { authState.accessToken = 'tok-123'; auto = null; resetRateLimitGate(); installDoubles(); });
 test.afterEach(() => { globalThis.fetch = realFetch; URL.createObjectURL = realCreate; URL.revokeObjectURL = realRevoke; });
 
 // ───────────────────────── play() ─────────────────────────
@@ -133,10 +135,14 @@ test('visibilidad DESCONOCIDA (isPublic undefined): URL directa como hasta ahora
   assert.equal(fetchCalls.length, 0);
 
   // el stream directo falló (p. ej. era privada): el fallback existente descarga con Authorization, una sola vez
+  // (antes se sondea con 1 byte para saber POR QUÉ falló; recién entonces la descarga completa)
   await store.getState().retryWithAuth();
   await store.getState().retryWithAuth();
-  assert.equal(fetchCalls.length, 1);
+  assert.equal(fetchCalls.length, 2);
+  assert.equal(fetchCalls[0].headers.Range, 'bytes=0-0');
   assert.equal(authHeader(fetchCalls[0]), 'Bearer tok-123');
+  assert.equal(fetchCalls[1].headers.Range, undefined);
+  assert.equal(authHeader(fetchCalls[1]), 'Bearer tok-123');
   assert.match(el.src, /^blob:/);
 });
 
@@ -386,4 +392,158 @@ test('las pistas de samples y muestras de voz de la biblioteca declaran isPublic
     assert.equal(blocks.length, count, `${file}: pistas armadas con sample.fileUrl`);
     for (const b of blocks) assert.match(b, /isPublic:\s*false/, `${file}: falta isPublic: false`);
   }
+});
+
+
+// ═════════════ HTTP 429 y audio: sin descargas completas por un rate limit, errores distinguidos ═════════════
+
+const rangeOf = (call) => call.headers.Range;
+const isProbe = (call) => rangeOf(call) === 'bytes=0-0';
+
+test('429 en la carga directa de una pista PÚBLICA: el sondeo (1 byte) lo detecta y NO se descarga el archivo completo como blob', async () => {
+  const { store, el } = await freshStore();
+  store.getState().setAudio(el);
+  const t = track('r1', { isPublic: true });
+  store.getState().play(t);
+  await settle();
+  assert.deepEqual(el.srcLog, [t.audioUrl], 'streaming directo (el navegador hace los Range)');
+
+  auto = () => ({ status: 429, body: '{}', headers: { 'Retry-After': '25' } });
+  await store.getState().retryWithAuth(); // el <audio> falló: onError
+  assert.equal(fetchCalls.length, 1, 'una sola solicitud: el sondeo');
+  assert.ok(isProbe(fetchCalls[0]));
+  assert.equal(blobsCreated.length, 0, 'ningún blob / descarga completa');
+  assert.ok(el.srcLog.every((s) => s === t.audioUrl || s === null), 'el audio no se reemplaza por un blob');
+  assert.match(store.getState().playbackError, /muchas solicitudes de audio/);
+  assert.equal(store.getState().isPlaying, false);
+  const wait = rateLimitRemainingMs('files');
+  assert.ok(wait > 20_000 && wait <= 25_000, `pausa del alcance de archivos (${wait} ms)`);
+  assert.equal(rateLimitRemainingMs('api'), 0, 'la API general no se bloquea');
+  assert.equal(rateLimitRemainingMs('refresh'), 0, 'ni el refresh');
+});
+
+test('durante la pausa de archivos no se hace NINGUNA solicitud de audio (ni sondeo ni descarga), pública o privada; al terminar la pausa se puede volver a intentar', async () => {
+  const { store, el } = await freshStore();
+  store.getState().setAudio(el);
+  noteRateLimit(30_000, 'files');
+  const pub = track('r2', { isPublic: true });
+  store.getState().play(pub);
+  await settle();
+  await store.getState().retryWithAuth();
+  assert.equal(fetchCalls.length, 0);
+  assert.match(store.getState().playbackError, /muchas solicitudes de audio/);
+
+  // pista privada: su descarga autenticada tampoco sale durante la pausa
+  const priv = track('r3', { isPublic: false });
+  store.getState().play(priv);
+  await settle();
+  assert.equal(fetchCalls.length, 0);
+  assert.match(store.getState().playbackError, /muchas solicitudes de audio/);
+
+  // terminó la pausa: el usuario reproduce otra pista privada y su descarga autenticada funciona
+  resetRateLimitGate();
+  auto = () => ({ status: 200, body: 'wav' });
+  store.getState().play(track('r3b', { isPublic: false }));
+  await settle();
+  assert.equal(fetchCalls.length, 1);
+  assert.match(el.src, /^blob:/);
+});
+
+test('un 429 en la descarga autenticada de una pista PRIVADA se informa como límite de solicitudes (no «sesión» ni genérico), registra la pausa y no reintenta', async () => {
+  const { store, el } = await freshStore();
+  store.getState().setAudio(el);
+  auto = () => ({ status: 429, body: '{}', headers: { 'Retry-After': '12' } });
+  store.getState().play(track('r4', { isPublic: false }));
+  await settle();
+  assert.equal(fetchCalls.length, 1);
+  assert.match(store.getState().playbackError, /muchas solicitudes de audio/);
+  assert.ok(rateLimitRemainingMs('files') > 10_000);
+  await store.getState().retryWithAuth();
+  assert.equal(fetchCalls.length, 1, 'sin reintentos automáticos');
+});
+
+test('el fallback autenticado se conserva cuando de verdad hace falta: el sondeo responde 206 ⇒ recién ahí se descarga el archivo con Authorization', async () => {
+  const { store, el } = await freshStore();
+  store.getState().setAudio(el);
+  store.getState().play(track('r5'));
+  await settle();
+  auto = (_url, init) => (init?.headers?.Range === 'bytes=0-0' ? { status: 206, body: 'x' } : { status: 200, body: 'wav' });
+  await store.getState().retryWithAuth();
+  assert.equal(fetchCalls.length, 2);
+  assert.ok(isProbe(fetchCalls[0]));
+  assert.equal(rangeOf(fetchCalls[1]), undefined);
+  assert.equal(authHeader(fetchCalls[1]), 'Bearer tok-123');
+  assert.match(el.src, /^blob:/);
+  assert.equal(store.getState().playbackError, null);
+});
+
+for (const [status, pattern, permanent] of [[401, /sesión expiró/, true], [403, /No tenés permiso/, true], [404, /No encontramos el audio/, true], [503, /No pudimos cargar el audio/, false]]) {
+  test(`el sondeo distingue el motivo (${status}): mensaje propio, sin descarga completa${permanent ? ' y sin más intentos' : ' y permitiendo reintentar'}`, async () => {
+    const { store, el } = await freshStore();
+    store.getState().setAudio(el);
+    store.getState().play(track(`r6-${status}`));
+    await settle();
+    auto = () => ({ status, body: '{}' });
+    await store.getState().retryWithAuth();
+    assert.equal(blobsCreated.length, 0);
+    assert.match(store.getState().playbackError, pattern);
+    assert.equal(rateLimitRemainingMs('files'), 0, 'solo un 429 activa la pausa');
+    await store.getState().retryWithAuth();
+    assert.equal(fetchCalls.length, permanent ? 1 : 2, permanent ? 'un fallo de permisos no se repite' : 'un fallo transitorio sí admite otro intento');
+  });
+}
+
+test('red caída al sondear: mensaje de conexión (no de permisos), sin descarga completa, admite reintento', async () => {
+  const { store, el } = await freshStore();
+  store.getState().setAudio(el);
+  store.getState().play(track('r7'));
+  await settle();
+  auto = () => 'network';
+  await store.getState().retryWithAuth();
+  assert.match(store.getState().playbackError, /No pudimos conectar/);
+  assert.equal(blobsCreated.length, 0);
+  await store.getState().retryWithAuth();
+  assert.equal(fetchCalls.length, 2);
+});
+
+test('la pausa de la API general o del refresh NO frena el audio (alcances independientes)', async () => {
+  const { store, el } = await freshStore();
+  store.getState().setAudio(el);
+  noteRateLimit(120_000, 'api');
+  noteRateLimit(120_000, 'refresh');
+  auto = () => ({ status: 200, body: 'wav' });
+  store.getState().play(track('r8', { isPublic: false }));
+  await settle();
+  assert.equal(fetchCalls.length, 1);
+  assert.match(el.src, /^blob:/);
+  assert.equal(rateLimitRemainingMs('files'), 0);
+});
+
+test('la reproducción normal por streaming (200/206) no cambia: URL directa, ninguna solicitud propia, reproducción inmediata', async () => {
+  const { store, el } = await freshStore();
+  store.getState().setAudio(el);
+  const t = track('r9', { isPublic: true });
+  store.getState().play(t);
+  await settle();
+  assert.deepEqual(el.srcLog, [t.audioUrl]);
+  assert.equal(fetchCalls.length, 0);
+  assert.equal(el.playCalls, 1);
+  assert.equal(store.getState().playbackError, null);
+});
+
+test('cambio de pista durante el sondeo: la respuesta tardía no pisa la pista nueva ni crea blobs', async () => {
+  const { store, el } = await freshStore();
+  store.getState().setAudio(el);
+  store.getState().play(track('r10', { isPublic: true }));
+  await settle();
+  const retry = store.getState().retryWithAuth(); // sondeo pendiente
+  await tick();
+  store.getState().play(track('r11', { isPublic: true }));
+  await settle();
+  fetchCalls[0].respond(206, 'x');
+  await retry;
+  await settle();
+  assert.equal(blobsCreated.length, 0);
+  assert.equal(fetchCalls.length, 1, 'la respuesta del sondeo viejo no dispara la descarga');
+  assert.equal(store.getState().track.id, 'r11');
 });

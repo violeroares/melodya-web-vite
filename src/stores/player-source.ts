@@ -25,23 +25,43 @@ export function usesAuthenticatedSource(track: SourceTrack | null | undefined, h
   return track.isPublic === false && hasSession;
 }
 
-/** El backend rechazó (o no pudimos hacer) la descarga autenticada del audio. */
+/**
+ * El backend rechazó (o no pudimos hacer) la descarga/consulta del audio. status 0 = sin respuesta (red / timeout).
+ * `retryAfterMs` solo viene en un 429 con Retry-After legible.
+ */
 export class AudioSourceError extends Error {
   status: number;
-  constructor(status: number, message: string) {
+  retryAfterMs?: number;
+  constructor(status: number, message: string, retryAfterMs?: number) {
     super(message);
     this.name = 'AudioSourceError';
     this.status = status;
+    this.retryAfterMs = retryAfterMs;
   }
 }
 
-/** Mensaje para el usuario según el motivo (sin convertir los errores de autenticación en un fallo genérico). */
+/** Mensaje para el usuario según el motivo (autorización, rate limit, red/servidor: NO se confunden entre sí). */
 export function audioErrorMessage(err: unknown): string {
   const status = err instanceof AudioSourceError ? err.status : 0;
   if (status === 401) return 'Tu sesión expiró. Iniciá sesión de nuevo para escuchar esta canción.';
   if (status === 403) return 'No tenés permiso para escuchar este audio.';
   if (status === 404) return 'No encontramos el audio de esta canción.';
+  if (status === 429) return 'Hay muchas solicitudes de audio en este momento. Esperá unos segundos y volvé a darle play.';
+  if (status === 0 && err instanceof AudioSourceError) return 'No pudimos conectar para cargar el audio. Revisá tu conexión y volvé a intentar.';
   return 'No pudimos cargar el audio. Probá de nuevo en un momento.';
+}
+
+/** ¿Un fallo del audio es transitorio (conviene permitir otro intento del usuario) y no un problema de permisos? */
+export function isTransientAudioError(err: unknown): boolean {
+  const status = err instanceof AudioSourceError ? err.status : 0;
+  return status === 0 || status === 429 || status >= 500;
+}
+
+/** `Retry-After` (segundos) → ms; solo el formato numérico (módulo puro: sin dependencias). */
+function retryAfterMsOf(res: { headers?: { get?: (k: string) => string | null } }): number | undefined {
+  const raw = res.headers?.get?.('retry-after');
+  if (!raw || !/^\d+(\.\d+)?$/.test(raw.trim())) return undefined;
+  return Math.min(Number(raw) * 1000, 15 * 60_000);
 }
 
 export interface AuthSourceDeps {
@@ -117,7 +137,7 @@ export function createAuthSource(deps: AuthSourceDeps) {
   };
 }
 
-/** fetch con Authorization; rechaza con AudioSourceError(status) si el servidor no responde 2xx. */
+/** fetch con Authorization; rechaza con AudioSourceError(status) si el servidor no responde 2xx (status 0 = red). Un AbortError se propaga tal cual. */
 export async function fetchAudioBlob(
   url: string,
   token: string | null,
@@ -126,7 +146,42 @@ export async function fetchAudioBlob(
 ): Promise<Blob> {
   const headers: Record<string, string> = {};
   if (token) headers.Authorization = `Bearer ${token}`;
-  const res = await fetchImpl(url, { headers, signal });
-  if (!res.ok) throw new AudioSourceError(res.status, `stream ${res.status}`);
+  let res: Response;
+  try {
+    res = await fetchImpl(url, { headers, signal });
+  } catch (err) {
+    if (err instanceof Error && err.name === 'AbortError') throw err;
+    throw new AudioSourceError(0, 'stream sin conexión');
+  }
+  if (!res.ok) throw new AudioSourceError(res.status, `stream ${res.status}`, res.status === 429 ? retryAfterMsOf(res) : undefined);
   return res.blob();
+}
+
+/**
+ * Sondeo BARATO de acceso al audio (1 byte con Range + Authorization) para decidir qué hacer cuando la carga directa del <audio> falló y no se
+ * puede leer el motivo (un <audio> no expone el estado HTTP). Distingue 429 / 401 / 403 / 404 / 5xx / red de un archivo realmente accesible,
+ * SIN descargar el audio completo. Solo un 200/206 devuelve `{ ok: true }`; el cuerpo nunca se lee (se cancela).
+ */
+export async function probeAudioAccess(
+  url: string,
+  token: string | null,
+  signal: AbortSignal,
+  fetchImpl: typeof fetch = fetch
+): Promise<{ ok: true } | { ok: false; error: AudioSourceError }> {
+  const headers: Record<string, string> = { Range: 'bytes=0-0' };
+  if (token) headers.Authorization = `Bearer ${token}`;
+  let res: Response;
+  try {
+    res = await fetchImpl(url, { headers, signal });
+  } catch (err) {
+    if (err instanceof Error && err.name === 'AbortError') throw err;
+    return { ok: false, error: new AudioSourceError(0, 'sondeo sin conexión') };
+  }
+  try {
+    await res.body?.cancel?.();
+  } catch {
+    /* ya cerrado */
+  }
+  if (res.ok) return { ok: true };
+  return { ok: false, error: new AudioSourceError(res.status, `sondeo ${res.status}`, res.status === 429 ? retryAfterMsOf(res) : undefined) };
 }
