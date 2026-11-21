@@ -11,6 +11,7 @@
     "preview": "vite preview",
     "start": "node server/server.mjs",
     "typecheck": "tsc -b",
+    "check:chunks": "node scripts/check-chunk-sizes.mjs",
     "lint": "eslint .",
     "test": "node --test \"tests/*.test.mjs\""
   },
