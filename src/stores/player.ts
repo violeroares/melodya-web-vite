@@ -243,6 +243,7 @@ async function loadAuthenticated(track: PlayerTrack, opts: { autoplay: boolean; 
   /* El limitador de archivos pidió esperar (429 reciente): no se le pega con otra descarga completa; se informa el motivo real. */
   if (rateLimitRemainingMs('files') > 0) {
     usePlayerStore.setState({ isPlaying: false, playbackError: audioErrorMessage(new AudioSourceError(429, 'pausa vigente')) });
+    updateMediaPlayback(false, 0, track.durationSec ?? 0);
     return;
   }
   let result;
@@ -252,6 +253,7 @@ async function loadAuthenticated(track: PlayerTrack, opts: { autoplay: boolean; 
     if (err instanceof Error && err.name === 'AbortError') return;
     if (err instanceof AudioSourceError && err.status === 429) noteRateLimit(err.retryAfterMs, 'files'); // pausa del alcance de archivos (no frena API ni refresh)
     usePlayerStore.setState({ isPlaying: false, playbackError: audioErrorMessage(err) });
+    updateMediaPlayback(false, 0, track.durationSec ?? 0); // MediaSession no debe seguir en «playing» si no hay nada sonando
     return;
   }
   if (result.status === 'stale') return;
@@ -284,7 +286,52 @@ function needsAuthenticatedReload(track: PlayerTrack, el: HTMLAudioElement): boo
 function reloadAuthenticated(track: PlayerTrack) {
   retriedTrack = track.audioUrl; // si el blob falla al decodificar no se reintenta en bucle
   usePlayerStore.setState({ isPlaying: false, playbackError: null });
+  updateMediaPlayback(false, 0, track.durationSec ?? 0); // mientras se descarga no suena nada
   void loadAuthenticated(track, { autoplay: true });
+  countPlayOnce(track);
+}
+
+/** Valor de HTMLMediaElement.NETWORK_NO_SOURCE: la selección de recurso falló y el elemento no reintenta por sí solo. */
+const NETWORK_NO_SOURCE = 3;
+
+/**
+ * Reanuda el <audio> con el.play() manejando SIEMPRE el rechazo (p. ej. «The element has no supported sources» cuando la carga falló): sin
+ * esto quedaba una promesa rechazada sin manejar y el estado del reproductor/MediaSession no reflejaba que no suena nada.
+ */
+function resumeElement(el: HTMLAudioElement, track: PlayerTrack) {
+  void el.play().then(() => {
+    usePlayerStore.setState({ isPlaying: true });
+    updateMediaPlayback(true, el.currentTime, el.duration || track.durationSec || 0);
+  }).catch(() => {
+    usePlayerStore.setState({ isPlaying: false });
+    updateMediaPlayback(false, el.currentTime || 0, track.durationSec ?? 0);
+  });
+}
+
+/**
+ * ¿Una pista de URL directa (pública / de visibilidad desconocida) quedó con el <audio> FALLIDO? Tras un 429, un 5xx o un corte de red el elemento
+ * queda en NETWORK_NO_SOURCE (o con `error`): un `el.play()` se rechaza sin pedir nada y nunca se recupera solo. Hay que reiniciarlo con load().
+ */
+function needsElementRecovery(track: PlayerTrack, el: HTMLAudioElement): boolean {
+  return !usesAuthenticatedSource(track, hasSession()) && Boolean(el.getAttribute('src')) && (Boolean(el.error) || el.networkState === NETWORK_NO_SOURCE);
+}
+
+/**
+ * Reintenta una pista de URL directa cuyo <audio> falló. Respeta la pausa de archivos: durante un 429 no sale ninguna solicitud y se muestra su
+ * mensaje; terminada la pausa, load() reinicia el elemento (vuelve a seleccionar el recurso) y se reproduce la MISMA pista. Si la carga vuelve a
+ * fallar, el evento `error` del <audio> reactiva el sondeo de acceso (retriedTrack se libera para permitirlo).
+ */
+function recoverFailedElement(track: PlayerTrack, el: HTMLAudioElement) {
+  if (rateLimitRemainingMs('files') > 0) {
+    usePlayerStore.setState({ isPlaying: false, playbackError: audioErrorMessage(new AudioSourceError(429, 'pausa vigente')) });
+    updateMediaPlayback(false, 0, track.durationSec ?? 0);
+    return;
+  }
+  retriedTrack = null;
+  usePlayerStore.setState({ isPlaying: false, playbackError: null });
+  el.load(); // vuelve a ejecutar la selección de recurso (play() solo no lo hace en NETWORK_NO_SOURCE)
+  el.playbackRate = usePlayerStore.getState().speed; // load() resetea a defaultPlaybackRate; lo reforzamos
+  resumeElement(el, track);
   countPlayOnce(track);
 }
 
@@ -675,11 +722,11 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
       } else if (needsAuthenticatedReload(state.track ?? track, el)) {
         /* Pista privada SIN fuente válida: no se llama a el.play() (no hay qué reproducir) sino al flujo autenticado, que respeta la pausa de archivos. */
         reloadAuthenticated(state.track ?? track);
+      } else if (needsElementRecovery(state.track ?? track, el)) {
+        /* Pista de URL directa con el <audio> fallido (429 / 5xx / red): se reinicia y reintenta respetando la pausa de archivos. */
+        recoverFailedElement(state.track ?? track, el);
       } else {
-        void el.play().then(() => {
-          set({ isPlaying: true });
-          updateMediaPlayback(true, el.currentTime, el.duration || track.durationSec || 0);
-        });
+        resumeElement(el, state.track ?? track);
         countPlayOnce(state.track ?? track);
       }
       return;
@@ -696,6 +743,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
       clearAudioSource(el);
       retriedTrack = track.audioUrl; // si el blob falla al decodificar no se reintenta en bucle
       set({ isPlaying: false });
+      updateMediaPlayback(false, 0, track.durationSec ?? 0); // MediaSession deja de decir «playing» (era la pista anterior)
       void loadAuthenticated(track, { autoplay: true });
     } else {
       el.src = track.audioUrl;
@@ -721,10 +769,12 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
         reloadAuthenticated(current);
         return;
       }
-      void el.play().then(() => {
-        set({ isPlaying: true });
-        updateMediaPlayback(true, el.currentTime, el.duration || 0);
-      });
+      /* Pista de URL directa con el <audio> fallido: reinicio con load() (o su mensaje durante la pausa de archivos), nunca un el.play() condenado. */
+      if (current && needsElementRecovery(current, el)) {
+        recoverFailedElement(current, el);
+        return;
+      }
+      if (current) resumeElement(el, current);
       if (current) countPlayOnce(current); // sesión restaurada: la primera reproducción sí cuenta
     } else {
       el.pause();
@@ -843,6 +893,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
     const fail = (error: AudioSourceError) => {
       if (error.status === 429) noteRateLimit(error.retryAfterMs, 'files');
       set({ isPlaying: false, playbackError: audioErrorMessage(error) });
+      updateMediaPlayback(false, 0, track.durationSec ?? 0);
       if (isTransientAudioError(error)) retriedTrack = null;
     };
     if (rateLimitRemainingMs('files') > 0) return fail(new AudioSourceError(429, 'pausa vigente'));

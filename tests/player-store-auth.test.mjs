@@ -16,6 +16,10 @@ globalThis.localStorage = {
   removeItem: (k) => { memory.delete(k); },
 };
 
+const mediaSession = { metadata: null, playbackState: 'none', setPositionState() {} };
+Object.defineProperty(globalThis.navigator, 'mediaSession', { value: mediaSession, configurable: true });
+globalThis.MediaMetadata = class { constructor(init) { Object.assign(this, init); } };
+
 const { authState } = await import('./_helpers/stubs/auth.mjs');
 const { resetRateLimitGate, noteRateLimit, rateLimitRemainingMs } = await import('../src/lib/api/resilience.ts');
 
@@ -36,6 +40,9 @@ class FakeAudio extends EventTarget {
     this.crossOrigin = null;
     this.playCalls = 0;
     this.currentSrc = ''; // recurso que el elemento tiene realmente conectado (HTML: sobrevive a removeAttribute('src'))
+    this.networkState = 0; // 0 EMPTY · 1 IDLE · 2 LOADING · 3 NO_SOURCE
+    this.error = null;
+    this.rejectPlay = false;
     this.ops = []; // pause / removeAttribute / load, en orden
     this.playedLog = []; // currentSrc en cada play(): permite comprobar que nunca suena una fuente anterior
     this.loadCalls = 0;
@@ -48,8 +55,16 @@ class FakeAudio extends EventTarget {
   // HTML: quitar el atributo NO reinicia el elemento ni cambia currentSrc.
   removeAttribute(name) { if (name === 'src') { this._src = ''; this.srcLog.push(null); this.ops.push('removeAttribute'); } }
   // load() vuelve a ejecutar la selección de recurso: sin src queda vacío.
-  load() { this.loadCalls += 1; this.currentSrc = this._src; this.ops.push('load'); }
-  async play() { this.playCalls += 1; this.paused = false; this.playedLog.push(this.currentSrc); }
+  load() { this.loadCalls += 1; this.currentSrc = this._src; this.networkState = this._src ? 2 : 0; this.error = null; this.ops.push('load'); }
+  // Como un navegador: en NETWORK_NO_SOURCE (o con rejectPlay) play() se rechaza sin pedir nada y SOLO load() reinicia la selección de recurso.
+  async play() {
+    this.playCalls += 1;
+    if (this.rejectPlay || this.networkState === 3) throw Object.assign(new Error('The element has no supported sources.'), { name: 'NotSupportedError' });
+    this.paused = false;
+    this.playedLog.push(this.currentSrc);
+  }
+  /** Simula el fallo de la carga directa (429 / 5xx / red): el elemento queda en NETWORK_NO_SOURCE. */
+  failLoad() { this.networkState = 3; this.error = { code: 4 }; this.paused = true; }
   pause() { this.paused = true; this.ops.push('pause'); }
 }
 
@@ -803,4 +818,163 @@ test('toggle() sobre una pista privada YA cargada pausa y reanuda con el.play(),
   await settle();
   assert.equal(el.playCalls, before + 1, 'la pública reanuda con el.play() como siempre');
   assert.equal(fetchCalls.length, 1);
+});
+
+
+// ═════════════ Recuperación de pistas PÚBLICAS tras un fallo de la carga directa, y MediaSession ═════════════
+
+const unhandled = [];
+process.on('unhandledRejection', (reason) => unhandled.push(String((reason && reason.message) || reason)));
+const flush = async () => { await settle(); await new Promise((r) => setTimeout(r, 30)); };
+
+/** Reproduce una pública por URL directa y simula que la carga falló y se activó el sondeo (onError → retryWithAuth). */
+async function publicFailed(id, probe) {
+  const { store, el } = await freshStore();
+  store.getState().setAudio(el);
+  const pub = track(id, { isPublic: true });
+  store.getState().play(pub);
+  await settle();
+  el.failLoad();
+  auto = probe;
+  await store.getState().retryWithAuth();
+  await settle();
+  return { store, el, pub };
+}
+
+test('pública con 429 en la carga directa: reintentar durante la pausa no genera solicitudes, no llama a play() ni a load() y muestra el límite', async () => {
+  unhandled.length = 0;
+  const { store, el, pub } = await publicFailed('u1', rateLimitedAuto('30'));
+  assert.equal(fetchCalls.length, 1, 'solo el sondeo de 1 byte');
+  assert.ok(isProbe(fetchCalls[0]));
+  assert.match(store.getState().playbackError, /muchas solicitudes de audio/);
+  assert.equal(mediaSession.playbackState, 'paused');
+  const plays = el.playCalls;
+  const loads = el.loadCalls;
+  store.getState().toggle(); // botón de la barra / tarjeta / MediaSession
+  store.getState().play(pub); // 2.º clic sobre la misma pista
+  store.getState().toggle();
+  await flush();
+  assert.equal(fetchCalls.length, 1, 'ninguna solicitud durante la pausa');
+  assert.equal(el.playCalls, plays, 'no se llamó a el.play()');
+  assert.equal(el.loadCalls, loads, 'ni se reinició el elemento (eso sería una solicitud directa nueva)');
+  assert.match(store.getState().playbackError, /muchas solicitudes de audio/);
+  assert.equal(store.getState().isPlaying, false);
+  assert.equal(mediaSession.playbackState, 'paused');
+  assert.deepEqual(unhandled, [], 'ninguna promesa rechazada sin manejar');
+});
+
+test('pública: terminada la pausa por 429, el mismo botón la recupera (load() + play()) y suena la pista CORRECTA', async () => {
+  unhandled.length = 0;
+  const { store, el, pub } = await publicFailed('u2', rateLimitedAuto('30'));
+  resetRateLimitGate(); // terminó la pausa
+  const loads = el.loadCalls;
+  store.getState().toggle();
+  await flush();
+  assert.equal(el.loadCalls, loads + 1, 'el elemento se reinició con load()');
+  assert.equal(el.networkState, 2, 'volvió a seleccionar el recurso');
+  assert.equal(el.playedLog[el.playedLog.length - 1], pub.audioUrl, 'suena la misma pista, no otra');
+  assert.equal(store.getState().isPlaying, true);
+  assert.equal(store.getState().playbackError, null);
+  assert.equal(mediaSession.playbackState, 'playing');
+  assert.deepEqual(unhandled, []);
+});
+
+test('pública con 500 en la carga directa: mensaje genérico y, al volver el servidor, play() (misma pista) la recupera', async () => {
+  unhandled.length = 0;
+  const { store, el, pub } = await publicFailed('u3', () => ({ status: 500, body: '{}' }));
+  assert.match(store.getState().playbackError, /No pudimos cargar el audio/);
+  assert.equal(rateLimitRemainingMs('files'), 0, 'un 500 no activa la pausa de archivos');
+  auto = null;
+  const loads = el.loadCalls;
+  store.getState().play(pub); // segundo clic sobre la misma pista
+  await flush();
+  assert.equal(el.loadCalls, loads + 1);
+  assert.equal(el.playedLog[el.playedLog.length - 1], pub.audioUrl);
+  assert.equal(store.getState().isPlaying, true);
+  assert.equal(store.getState().playbackError, null);
+  assert.deepEqual(unhandled, []);
+});
+
+test('pública tras un error de red: mensaje de conexión y recuperación con el mismo botón; el sondeo puede repetirse', async () => {
+  unhandled.length = 0;
+  const { store, el, pub } = await publicFailed('u4', () => 'network');
+  assert.match(store.getState().playbackError, /No pudimos conectar/);
+  store.getState().toggle();
+  await flush();
+  assert.equal(el.playedLog[el.playedLog.length - 1], pub.audioUrl);
+  assert.equal(store.getState().isPlaying, true);
+  // si la carga volviera a fallar, el onError del <audio> puede iniciar OTRO sondeo (retriedTrack se liberó)
+  el.failLoad();
+  auto = () => ({ status: 500, body: '{}' });
+  const before = fetchCalls.length;
+  await store.getState().retryWithAuth();
+  assert.equal(fetchCalls.length, before + 1);
+  assert.deepEqual(unhandled, []);
+});
+
+test('el.play() rechazado (NotSupportedError) se maneja: sin promesas sin manejar, isPlaying false y MediaSession en pausa', async () => {
+  unhandled.length = 0;
+  const { store, el } = await freshStore();
+  store.getState().setAudio(el);
+  const pub = track('u5', { isPublic: true });
+  store.getState().play(pub);
+  await settle();
+  assert.equal(store.getState().isPlaying, true);
+  store.getState().toggle(); // pausa
+  await settle();
+  el.rejectPlay = true; // el navegador rechaza play() (sin error de red previo)
+  store.getState().toggle();
+  await flush();
+  assert.equal(store.getState().isPlaying, false);
+  assert.equal(mediaSession.playbackState, 'paused');
+  store.getState().play(pub); // atajo de la misma pista: también rechazado y manejado
+  await flush();
+  assert.equal(store.getState().isPlaying, false);
+  assert.deepEqual(unhandled, [], 'ningún rechazo sin manejar ni en toggle() ni en play()');
+});
+
+test('MediaSession tras un fallo de descarga PRIVADA: pasa a «paused» (no queda en «playing») y conserva los metadatos de la pista', async () => {
+  const { store, el } = await freshStore();
+  store.getState().setAudio(el);
+  store.getState().play(track('m1', { isPublic: true, title: 'Pública' }));
+  await settle();
+  assert.equal(mediaSession.playbackState, 'playing');
+  auto = rateLimitedAuto('30');
+  store.getState().play(privateTrack('m2'));
+  assert.equal(mediaSession.playbackState, 'paused', 'mientras se descarga ya no suena la pista anterior');
+  await settle();
+  assert.equal(store.getState().isPlaying, false);
+  assert.equal(mediaSession.playbackState, 'paused', 'y tras el fallo tampoco');
+  assert.equal(mediaSession.metadata.title, 'Tema m2', 'los metadatos son los de la pista elegida, sin tocar');
+  // recuperación: vuelve a «playing» cuando la pista suena de verdad
+  resetRateLimitGate();
+  auto = () => ({ status: 200, body: 'wav' });
+  store.getState().toggle();
+  await settle();
+  assert.equal(mediaSession.playbackState, 'playing');
+  assert.equal(el.playedLog[el.playedLog.length - 1], el.src);
+});
+
+test('reproducción normal sin fallos: pausar y reanudar una pública no reinicia el elemento ni pide nada', async () => {
+  unhandled.length = 0;
+  const { store, el } = await freshStore();
+  store.getState().setAudio(el);
+  const pub = track('n1', { isPublic: true });
+  store.getState().play(pub);
+  await settle();
+  const loads = el.loadCalls;
+  store.getState().toggle(); // pausa
+  await settle();
+  store.getState().toggle(); // reanuda
+  await settle();
+  store.getState().play(pub); // pausa (misma pista)
+  await settle();
+  store.getState().play(pub); // reanuda
+  await settle();
+  assert.equal(el.loadCalls, loads, 'sin load(): el elemento sano no se reinicia');
+  assert.equal(fetchCalls.length, 0);
+  assert.equal(store.getState().isPlaying, true);
+  assert.equal(mediaSession.playbackState, 'playing');
+  assert.ok(el.playedLog.every((s) => s === pub.audioUrl), 'solo suena la pista elegida');
+  assert.deepEqual(unhandled, []);
 });
