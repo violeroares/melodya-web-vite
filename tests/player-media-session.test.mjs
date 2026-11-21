@@ -26,6 +26,8 @@ class FakeAudio extends EventTarget {
   set src(v) { this._src = v; }
   get src() { return this._src; }
   removeAttribute() { this._src = ''; }
+  getAttribute(name) { return name === 'src' && this._src ? this._src : null; }
+  load() {}
   async play() { this.paused = false; }
   pause() { this.paused = true; }
 }

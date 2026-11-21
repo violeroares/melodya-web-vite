@@ -125,6 +125,10 @@ export function createAuthSource(deps: AuthSourceDeps) {
         blob = await deps.fetchBlob(audioUrl, mineController.signal);
       } catch (err) {
         if (mine !== generation) return { status: 'stale' };
+        // La descarga terminó (con error): ya no está «en curso». Si quedara marcada, un reintento de la misma pista creería que sigue
+        // cargando y nunca volvería a pedirla.
+        controller = null;
+        loadingUrl = null;
         throw err;
       }
       if (mine !== generation) return { status: 'stale' };
