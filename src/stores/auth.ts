@@ -22,6 +22,7 @@ import {
   isTransient,
   rateLimitRemainingMs,
   refreshLeadMs,
+  type RateScope,
 } from '../lib/api/resilience.ts';
 import type { MeProfile } from '@/types';
 
@@ -90,10 +91,11 @@ const RETRY_MAX_MS = 5 * 60_000;
  *  HTTP y cuenta como un fallo más (saltaría al siguiente escalón de backoff). */
 const RETRY_AFTER_MARGIN_MS = 1500;
 
-/** Espera hasta el próximo reintento: backoff, nunca antes de Retry-After ni de que termine el bloqueo global (con margen). */
-function retryDelayMs(failures: number, err: unknown): number {
+/** Espera hasta el próximo reintento: backoff, nunca antes de Retry-After ni de que termine la pausa del alcance que falló (con margen):
+ *  'refresh' para la renovación de la sesión, 'api' para cargar el perfil (GET /users/me). */
+function retryDelayMs(failures: number, err: unknown, scope: RateScope = 'api'): number {
   const retryAfter = (err as { retryAfterMs?: number } | undefined)?.retryAfterMs ?? 0;
-  const gate = rateLimitRemainingMs();
+  const gate = rateLimitRemainingMs(scope);
   const floor = Math.max(retryAfter, gate);
   return Math.max(backoffMs(RETRY_BASE_MS, failures, RETRY_MAX_MS), floor > 0 ? floor + RETRY_AFTER_MARGIN_MS : 0);
 }
@@ -156,14 +158,14 @@ function handleRefreshFailure(err: unknown) {
     return;
   }
   refreshFailures += 1;
-  armRefreshTimer(retryDelayMs(refreshFailures, err));
+  armRefreshTimer(retryDelayMs(refreshFailures, err, 'refresh'));
 }
 
 /** Sin usuario cargado y con un fallo transitorio: reintenta hidratar la sesión con backoff (un solo timer, sin ráfagas). */
-function scheduleSessionRecovery(err: unknown) {
+function scheduleSessionRecovery(err: unknown, scope: RateScope = 'api') {
   if (recoveryTimer || typeof window === 'undefined') return;
   recoveryFailures += 1;
-  const delay = retryDelayMs(recoveryFailures, err);
+  const delay = retryDelayMs(recoveryFailures, err, scope);
   recoveryTimer = setTimeout(() => {
     recoveryTimer = null;
     if (!loadStored() || useAuthStore.getState().user) return;
@@ -186,7 +188,7 @@ async function hydrate(): Promise<LoadMeOutcome> {
       }
       // 429 / red / 5xx: la sesión sigue guardada; la UI arranca como invitado y se reintenta con backoff.
       if (!useAuthStore.getState().user) useAuthStore.setState({ status: 'guest' });
-      scheduleSessionRecovery(err);
+      scheduleSessionRecovery(err, 'refresh');
       return 'transient';
     }
   }
@@ -307,8 +309,9 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       scheduleProactiveRefresh(stored.accessToken, stored.accessExpiresAt);
       return;
     }
-    /* Trabajo en segundo plano: si el backend está limitando (429), se espera a que termine el bloqueo. */
-    const wait = rateLimitRemainingMs();
+    /* Trabajo en segundo plano: si el limitador del REFRESH está pidiendo esperar (429), se espera a que termine. Un 429 de la API general
+     * o de los archivos no impide renovar el access token. */
+    const wait = rateLimitRemainingMs('refresh');
     if (wait > 0) {
       armRefreshTimer(wait + RETRY_AFTER_MARGIN_MS);
       return;

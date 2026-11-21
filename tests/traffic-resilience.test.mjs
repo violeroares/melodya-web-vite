@@ -33,19 +33,21 @@ test('Retry-After: segundos, fecha HTTP, inválido y tope', () => {
   assert.equal(parseRetryAfter('Wed, 21 Oct 2015 07:28:10 GMT', Date.parse('Wed, 21 Oct 2015 07:28:00 GMT')), 10_000);
   assert.equal(parseRetryAfter('Wed, 21 Oct 2015 07:28:00 GMT', Date.parse('Wed, 21 Oct 2015 07:29:00 GMT')), 0, 'fecha pasada → 0');
   assert.equal(parseRetryAfter('basura'), undefined);
+  assert.equal(parseRetryAfter('-5'), undefined, 'un número negativo no es un Retry-After válido');
+  assert.equal(parseRetryAfter('12:30'), undefined, 'una hora suelta tampoco');
   assert.equal(parseRetryAfter(undefined), undefined);
   assert.equal(parseRetryAfter('999999'), 15 * 60_000, 'nunca más que la ventana del backend (15 min)');
 });
 
 test('compuerta global de 429', () => {
   assert.equal(rateLimitRemainingMs(), 0);
-  noteRateLimit(4000, 1_000);
-  assert.equal(rateLimitRemainingMs(2_000), 3000);
-  noteRateLimit(1000, 1_000); // un 429 más corto no acorta el bloqueo vigente
-  assert.equal(rateLimitRemainingMs(2_000), 3000);
-  assert.equal(rateLimitRemainingMs(10_000), 0);
-  noteRateLimit(undefined, 0);
-  assert.equal(rateLimitRemainingMs(0), 30_000, 'sin Retry-After se pausa 30 s por defecto');
+  noteRateLimit(4000, 'api', 1_000);
+  assert.equal(rateLimitRemainingMs('api', 2_000), 3000);
+  noteRateLimit(1000, 'api', 1_000); // un 429 más corto no acorta el bloqueo vigente
+  assert.equal(rateLimitRemainingMs('api', 2_000), 3000);
+  assert.equal(rateLimitRemainingMs('api', 10_000), 0);
+  noteRateLimit(undefined, 'api', 0);
+  assert.equal(rateLimitRemainingMs('api', 0), 30_000, 'sin Retry-After se pausa 30 s por defecto');
 });
 
 test('backoff: exponencial, con tope y jitter acotado', () => {

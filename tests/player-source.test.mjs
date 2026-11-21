@@ -134,3 +134,17 @@ test('isLoading: informa la descarga en curso de esa URL (para no duplicarla al 
   f.pending[1].resolve();
   await q;
 });
+
+test('isLoading: una descarga que FALLA deja de estar «en curso» (un reintento de la misma pista debe poder volver a pedirla)', async () => {
+  const f = fakeDeps();
+  const source = createAuthSource(f.deps);
+  const p = source.load('a');
+  assert.equal(source.isLoading('a'), true);
+  f.pending[0].reject(new AudioSourceError(429, 'stream 429', 25_000));
+  await assert.rejects(p, (e) => e instanceof AudioSourceError && e.status === 429);
+  assert.equal(source.isLoading('a'), false, 'tras el error ya no figura en curso');
+  const q = source.load('a'); // el reintento no se toma por una descarga en vuelo
+  assert.equal(source.isLoading('a'), true);
+  f.pending[1].resolve();
+  assert.deepEqual(await q, { status: 'ready', url: 'blob:test/1' });
+});

@@ -9,7 +9,7 @@
  *  • Pestaña oculta: pausa total (sin temporizador); al volver a ser visible consulta de inmediato.
  *  • Con la compuerta de 429 activa, no consulta hasta que termine el bloqueo.
  */
-import { classifyError, isPermanent, pollErrorDelayMs, rateLimitRemainingMs } from './resilience.ts';
+import { classifyError, isPermanent, pollErrorDelayMs, rateLimitRemainingMs, type RateScope } from './resilience.ts';
 
 export interface PollerEnv {
   isHidden: () => boolean;
@@ -47,6 +47,8 @@ export interface PollerOptions {
   onRecovered?: () => void;
   /** Consultar enseguida al iniciar (por defecto true). */
   immediate?: boolean;
+  /** Alcance de rate limit que respeta (por defecto la API general): una pausa de otro limitador no lo frena. */
+  scope?: RateScope;
   env?: PollerEnv;
 }
 
@@ -60,6 +62,7 @@ export interface Poller {
 export function startPoller(opts: PollerOptions): Poller {
   const env = opts.env ?? browserEnv;
   const maxBackoff = opts.maxBackoffMs ?? 5 * 60_000;
+  const scope = opts.scope ?? 'api';
   const base = () => (typeof opts.baseMs === 'function' ? opts.baseMs() : opts.baseMs);
   let stopped = false;
   let inFlight = false;
@@ -82,7 +85,7 @@ export function startPoller(opts: PollerOptions): Poller {
   async function tick() {
     if (stopped || inFlight) return;
     if (env.isHidden()) return; // pausa total: el listener de visibilidad reanuda
-    const blocked = rateLimitRemainingMs();
+    const blocked = rateLimitRemainingMs(scope);
     if (blocked > 0) {
       schedule(blocked + Math.round(env.rand() * 1000));
       return;
@@ -107,7 +110,7 @@ export function startPoller(opts: PollerOptions): Poller {
         stop();
         return;
       }
-      schedule(pollErrorDelayMs(base(), failures, err, maxBackoff, env.rand));
+      schedule(pollErrorDelayMs(base(), failures, err, maxBackoff, env.rand, scope));
     } finally {
       inFlight = false;
     }

@@ -11,11 +11,15 @@
  *  • el llamador puede indicar `requireAuth` (p. ej. la portada de una canción PRIVATE de la biblioteca);
  *  • y se APRENDE: toda URL que necesitó el fallback autenticado se recuerda (sessionStorage) y en cargas siguientes va directo al fetch
  *    autenticado. Los permisos no cambian: sigue siendo el backend quien autoriza cada archivo con el token del usuario.
+ *
+ * Rate limit: un 429 de archivos registra una pausa del alcance 'files' (independiente de la API general y del refresh). Durante la pausa no se
+ * piden más descargas autenticadas ni se marca la imagen como «denegada»: simplemente no se reintenta de forma agresiva y se vuelve a pedir
+ * cuando se monta de nuevo (o termina la pausa).
  */
 import { useCallback, useEffect, useState } from 'react';
 import { getAccessTokenSync } from '@/stores/auth';
 import { apiFileUrl } from '@/lib/api/client';
-import { noteRateLimit, parseRetryAfter } from '@/lib/api/resilience';
+import { noteRateLimit, rateLimitRemainingMs, retryAfterFromHeaders } from '@/lib/api/resilience';
 
 const objectUrlCache = new Map<string, string>();
 /** MIME real (Content-Type de la respuesta) de cada object URL ya creado. Solo lectura para quien lo necesite (p. ej. MediaSession). */
@@ -99,6 +103,8 @@ export async function authImageObjectUrl(url: string): Promise<string | null> {
   if (deniedCache.has(deniedKey(key, token))) return null;
   const pending = inflight.get(key);
   if (pending) return pending;
+  // El limitador de archivos pidió esperar: no se le insiste (la imagen queda sin cargar; se reintenta al volver a montarla).
+  if (rateLimitRemainingMs('files') > 0) return null;
   const headers: Record<string, string> = {};
   if (token) headers.Authorization = `Bearer ${token}`;
   const task = (async () => {
@@ -106,8 +112,8 @@ export async function authImageObjectUrl(url: string): Promise<string | null> {
       const res = await fetch(key, { headers });
       if (!res.ok) {
         if (res.status === 401 || res.status === 403 || res.status === 404) deniedCache.add(deniedKey(key, token));
-        // 429: el backend pide esperar; el trabajo en segundo plano (polling…) respeta la pausa. No se marca como «denegada».
-        if (res.status === 429) noteRateLimit(parseRetryAfter(res.headers.get('retry-after')));
+        // 429: pausa del alcance de archivos (no frena la API general ni el refresh). No se marca como «denegada»: es transitorio.
+        if (res.status === 429) noteRateLimit(retryAfterFromHeaders(res.headers), 'files');
         return null;
       }
       const blob = await res.blob();

@@ -184,13 +184,51 @@ test('refresh proactivo: si OTRA pestaña ya renovó, se adopta su token SIN ped
   assert.equal(longTimers().length, 1, 'y reagenda su timer con el nuevo exp');
 });
 
-test('refresh proactivo: con la compuerta de 429 activa no se pide nada (espera el bloqueo)', async () => {
+test('refresh proactivo: con la pausa del REFRESH activa no se pide nada (espera el bloqueo)', async () => {
   seed({ ttlSec: 900, issuedAgoSec: 890 });
   useAuthStore.setState({ user: { id: 'u1' }, status: 'authenticated', accessToken: 'x' });
-  noteRateLimit(60_000);
+  noteRateLimit(60_000, 'refresh');
   await useAuthStore.getState().refreshSession();
   assert.equal(shared.refreshCalls, 0);
   assert.ok(longTimers()[0].ms >= 59_000);
+});
+
+test('un 429 de la API general o de los archivos NO impide renovar la sesión (alcances independientes)', async () => {
+  for (const scope of ['api', 'files']) {
+    shared.refreshCalls = 0;
+    seed({ ttlSec: 900, issuedAgoSec: 890 });
+    useAuthStore.setState({ user: { id: 'u1' }, status: 'authenticated', accessToken: 'x' });
+    resetRateLimitGate();
+    noteRateLimit(120_000, scope);
+    await useAuthStore.getState().refreshSession();
+    assert.equal(shared.refreshCalls, 1, `pausa de ${scope}: el refresh sale igual`);
+  }
+});
+
+test('reintento tras un 429 del refresh: espera la pausa del REFRESH, no la de la API general', async () => {
+  seed({ ttlSec: 900, issuedAgoSec: 890 });
+  useAuthStore.setState({ user: { id: 'u1' }, status: 'authenticated', accessToken: 'x' });
+  shared.refreshImpl = async () => { throw apiErr(429, { retryAfterMs: 2_000 }); };
+  noteRateLimit(300_000, 'api'); // la API general está en pausa: no debe alargar el reintento del refresh
+  await useAuthStore.getState().refreshSession();
+  assert.equal(longTimers().length, 1);
+  assert.ok(longTimers()[0].ms < 120_000, `el reintento no hereda la pausa de la API (${longTimers()[0].ms} ms)`);
+
+  for (const t of [...live.keys()]) globalThis.clearTimeout(t);
+  live.clear();
+  resetRateLimitGate();
+  noteRateLimit(300_000, 'refresh');
+  await useAuthStore.getState().refreshSession(); // con la pausa del refresh vigente no sale y espera su fin
+  assert.ok(longTimers()[0].ms >= 299_000, 'sí respeta la pausa del refresh');
+});
+
+test('recuperación al cargar el perfil (GET /users/me, API general): espera la pausa de la API, no la del refresh', async () => {
+  seed();
+  useAuthStore.setState({ user: null, status: 'loading' });
+  shared.meImpl = async () => { throw apiErr(429, { retryAfterMs: 1_000 }); };
+  noteRateLimit(200_000, 'refresh'); // el refresh en pausa no debe alargar la recuperación del perfil
+  assert.equal(await useAuthStore.getState().loadMe(), 'transient');
+  assert.ok(longTimers()[0].ms < 100_000, `no hereda la pausa del refresh (${longTimers()[0].ms} ms)`);
 });
 
 test('evento storage de otra pestaña: se adopta el token nuevo y se reagenda (sin refresh propio)', async () => {

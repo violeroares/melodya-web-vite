@@ -9,6 +9,7 @@ const REPLACEMENTS = {
   '@/lib/api': stub('api.mjs'),
   '@/lib/auth-image': stub('auth-image.mjs'),
   './player-source': new URL('../../src/stores/player-source.ts', import.meta.url).href,
+  '@/lib/api/resilience': new URL('../../src/lib/api/resilience.ts', import.meta.url).href,
 };
 
 export async function resolve(specifier, context, nextResolve) {

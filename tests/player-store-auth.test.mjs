@@ -16,7 +16,12 @@ globalThis.localStorage = {
   removeItem: (k) => { memory.delete(k); },
 };
 
+const mediaSession = { metadata: null, playbackState: 'none', setPositionState() {} };
+Object.defineProperty(globalThis.navigator, 'mediaSession', { value: mediaSession, configurable: true });
+globalThis.MediaMetadata = class { constructor(init) { Object.assign(this, init); } };
+
 const { authState } = await import('./_helpers/stubs/auth.mjs');
+const { resetRateLimitGate, noteRateLimit, rateLimitRemainingMs } = await import('../src/lib/api/resilience.ts');
 
 // ── dobles ──
 class FakeAudio extends EventTarget {
@@ -34,12 +39,33 @@ class FakeAudio extends EventTarget {
     this.preload = '';
     this.crossOrigin = null;
     this.playCalls = 0;
+    this.currentSrc = ''; // recurso que el elemento tiene realmente conectado (HTML: sobrevive a removeAttribute('src'))
+    this.networkState = 0; // 0 EMPTY · 1 IDLE · 2 LOADING · 3 NO_SOURCE
+    this.error = null;
+    this.rejectPlay = false;
+    this.ops = []; // pause / removeAttribute / load, en orden
+    this.playedLog = []; // currentSrc en cada play(): permite comprobar que nunca suena una fuente anterior
+    this.loadCalls = 0;
   }
-  set src(v) { this._src = v; this.srcLog.push(v); }
+  // Asignar src ejecuta el algoritmo de carga: el elemento pasa a la fuente nueva.
+  set src(v) { this._src = v; this.currentSrc = v; this.srcLog.push(v); }
   get src() { return this._src; }
-  removeAttribute(name) { if (name === 'src') { this._src = ''; this.srcLog.push(null); } }
-  async play() { this.playCalls += 1; this.paused = false; }
-  pause() { this.paused = true; }
+  getAttribute(name) { return name === 'src' && this._src ? this._src : null; }
+  hasAttribute(name) { return this.getAttribute(name) !== null; }
+  // HTML: quitar el atributo NO reinicia el elemento ni cambia currentSrc.
+  removeAttribute(name) { if (name === 'src') { this._src = ''; this.srcLog.push(null); this.ops.push('removeAttribute'); } }
+  // load() vuelve a ejecutar la selección de recurso: sin src queda vacío.
+  load() { this.loadCalls += 1; this.currentSrc = this._src; this.networkState = this._src ? 2 : 0; this.error = null; this.ops.push('load'); }
+  // Como un navegador: en NETWORK_NO_SOURCE (o con rejectPlay) play() se rechaza sin pedir nada y SOLO load() reinicia la selección de recurso.
+  async play() {
+    this.playCalls += 1;
+    if (this.rejectPlay || this.networkState === 3) throw Object.assign(new Error('The element has no supported sources.'), { name: 'NotSupportedError' });
+    this.paused = false;
+    this.playedLog.push(this.currentSrc);
+  }
+  /** Simula el fallo de la carga directa (429 / 5xx / red): el elemento queda en NETWORK_NO_SOURCE. */
+  failLoad() { this.networkState = 3; this.error = { code: 4 }; this.paused = true; }
+  pause() { this.paused = true; this.ops.push('pause'); }
 }
 
 let fetchCalls;
@@ -60,13 +86,14 @@ function installDoubles() {
       url: String(url),
       headers: init.headers ?? {},
       signal: init.signal,
-      respond: (status = 200, body = 'audio') => resolve(new Response(body, { status })),
+      respond: (status = 200, body = 'audio', headers = {}) => resolve(new Response(status === 204 || status === 304 ? null : body, { status, headers })),
       fail: reject,
     };
     fetchCalls.push(call);
     init.signal?.addEventListener('abort', () => reject(Object.assign(new Error('abortado'), { name: 'AbortError' })));
-    const immediate = auto?.(call.url);
-    if (immediate) call.respond(immediate.status, immediate.body);
+    const immediate = auto?.(call.url, init);
+    if (immediate === 'network') call.fail(new TypeError('fetch failed'));
+    else if (immediate) call.respond(immediate.status, immediate.body, immediate.headers);
   });
   URL.createObjectURL = (blob) => { const u = realCreate.call(URL, blob); blobsCreated.push(u); return u; };
   URL.revokeObjectURL = (u) => { blobsRevoked.push(u); realRevoke.call(URL, u); };
@@ -88,7 +115,7 @@ async function freshStore({ session } = {}) {
   return { store: mod.usePlayerStore, el, mod };
 }
 
-test.beforeEach(() => { authState.accessToken = 'tok-123'; auto = null; installDoubles(); });
+test.beforeEach(() => { authState.accessToken = 'tok-123'; auto = null; resetRateLimitGate(); installDoubles(); });
 test.afterEach(() => { globalThis.fetch = realFetch; URL.createObjectURL = realCreate; URL.revokeObjectURL = realRevoke; });
 
 // ───────────────────────── play() ─────────────────────────
@@ -133,10 +160,14 @@ test('visibilidad DESCONOCIDA (isPublic undefined): URL directa como hasta ahora
   assert.equal(fetchCalls.length, 0);
 
   // el stream directo falló (p. ej. era privada): el fallback existente descarga con Authorization, una sola vez
+  // (antes se sondea con 1 byte para saber POR QUÉ falló; recién entonces la descarga completa)
   await store.getState().retryWithAuth();
   await store.getState().retryWithAuth();
-  assert.equal(fetchCalls.length, 1);
+  assert.equal(fetchCalls.length, 2);
+  assert.equal(fetchCalls[0].headers.Range, 'bytes=0-0');
   assert.equal(authHeader(fetchCalls[0]), 'Bearer tok-123');
+  assert.equal(fetchCalls[1].headers.Range, undefined);
+  assert.equal(authHeader(fetchCalls[1]), 'Bearer tok-123');
   assert.match(el.src, /^blob:/);
 });
 
@@ -386,4 +417,564 @@ test('las pistas de samples y muestras de voz de la biblioteca declaran isPublic
     assert.equal(blocks.length, count, `${file}: pistas armadas con sample.fileUrl`);
     for (const b of blocks) assert.match(b, /isPublic:\s*false/, `${file}: falta isPublic: false`);
   }
+});
+
+
+// ═════════════ HTTP 429 y audio: sin descargas completas por un rate limit, errores distinguidos ═════════════
+
+const rangeOf = (call) => call.headers.Range;
+const isProbe = (call) => rangeOf(call) === 'bytes=0-0';
+
+test('429 en la carga directa de una pista PÚBLICA: el sondeo (1 byte) lo detecta y NO se descarga el archivo completo como blob', async () => {
+  const { store, el } = await freshStore();
+  store.getState().setAudio(el);
+  const t = track('r1', { isPublic: true });
+  store.getState().play(t);
+  await settle();
+  assert.deepEqual(el.srcLog, [t.audioUrl], 'streaming directo (el navegador hace los Range)');
+
+  auto = () => ({ status: 429, body: '{}', headers: { 'Retry-After': '25' } });
+  await store.getState().retryWithAuth(); // el <audio> falló: onError
+  assert.equal(fetchCalls.length, 1, 'una sola solicitud: el sondeo');
+  assert.ok(isProbe(fetchCalls[0]));
+  assert.equal(blobsCreated.length, 0, 'ningún blob / descarga completa');
+  assert.ok(el.srcLog.every((s) => s === t.audioUrl || s === null), 'el audio no se reemplaza por un blob');
+  assert.match(store.getState().playbackError, /muchas solicitudes de audio/);
+  assert.equal(store.getState().isPlaying, false);
+  const wait = rateLimitRemainingMs('files');
+  assert.ok(wait > 20_000 && wait <= 25_000, `pausa del alcance de archivos (${wait} ms)`);
+  assert.equal(rateLimitRemainingMs('api'), 0, 'la API general no se bloquea');
+  assert.equal(rateLimitRemainingMs('refresh'), 0, 'ni el refresh');
+});
+
+test('durante la pausa de archivos no se hace NINGUNA solicitud de audio (ni sondeo ni descarga), pública o privada; al terminar la pausa se puede volver a intentar', async () => {
+  const { store, el } = await freshStore();
+  store.getState().setAudio(el);
+  noteRateLimit(30_000, 'files');
+  const pub = track('r2', { isPublic: true });
+  store.getState().play(pub);
+  await settle();
+  await store.getState().retryWithAuth();
+  assert.equal(fetchCalls.length, 0);
+  assert.match(store.getState().playbackError, /muchas solicitudes de audio/);
+
+  // pista privada: su descarga autenticada tampoco sale durante la pausa
+  const priv = track('r3', { isPublic: false });
+  store.getState().play(priv);
+  await settle();
+  assert.equal(fetchCalls.length, 0);
+  assert.match(store.getState().playbackError, /muchas solicitudes de audio/);
+
+  // terminó la pausa: el usuario reproduce otra pista privada y su descarga autenticada funciona
+  resetRateLimitGate();
+  auto = () => ({ status: 200, body: 'wav' });
+  store.getState().play(track('r3b', { isPublic: false }));
+  await settle();
+  assert.equal(fetchCalls.length, 1);
+  assert.match(el.src, /^blob:/);
+});
+
+test('un 429 en la descarga autenticada de una pista PRIVADA se informa como límite de solicitudes (no «sesión» ni genérico), registra la pausa y no reintenta', async () => {
+  const { store, el } = await freshStore();
+  store.getState().setAudio(el);
+  auto = () => ({ status: 429, body: '{}', headers: { 'Retry-After': '12' } });
+  store.getState().play(track('r4', { isPublic: false }));
+  await settle();
+  assert.equal(fetchCalls.length, 1);
+  assert.match(store.getState().playbackError, /muchas solicitudes de audio/);
+  assert.ok(rateLimitRemainingMs('files') > 10_000);
+  await store.getState().retryWithAuth();
+  assert.equal(fetchCalls.length, 1, 'sin reintentos automáticos');
+});
+
+test('el fallback autenticado se conserva cuando de verdad hace falta: el sondeo responde 206 ⇒ recién ahí se descarga el archivo con Authorization', async () => {
+  const { store, el } = await freshStore();
+  store.getState().setAudio(el);
+  store.getState().play(track('r5'));
+  await settle();
+  auto = (_url, init) => (init?.headers?.Range === 'bytes=0-0' ? { status: 206, body: 'x' } : { status: 200, body: 'wav' });
+  await store.getState().retryWithAuth();
+  assert.equal(fetchCalls.length, 2);
+  assert.ok(isProbe(fetchCalls[0]));
+  assert.equal(rangeOf(fetchCalls[1]), undefined);
+  assert.equal(authHeader(fetchCalls[1]), 'Bearer tok-123');
+  assert.match(el.src, /^blob:/);
+  assert.equal(store.getState().playbackError, null);
+});
+
+for (const [status, pattern, permanent] of [[401, /sesión expiró/, true], [403, /No tenés permiso/, true], [404, /No encontramos el audio/, true], [503, /No pudimos cargar el audio/, false]]) {
+  test(`el sondeo distingue el motivo (${status}): mensaje propio, sin descarga completa${permanent ? ' y sin más intentos' : ' y permitiendo reintentar'}`, async () => {
+    const { store, el } = await freshStore();
+    store.getState().setAudio(el);
+    store.getState().play(track(`r6-${status}`));
+    await settle();
+    auto = () => ({ status, body: '{}' });
+    await store.getState().retryWithAuth();
+    assert.equal(blobsCreated.length, 0);
+    assert.match(store.getState().playbackError, pattern);
+    assert.equal(rateLimitRemainingMs('files'), 0, 'solo un 429 activa la pausa');
+    await store.getState().retryWithAuth();
+    assert.equal(fetchCalls.length, permanent ? 1 : 2, permanent ? 'un fallo de permisos no se repite' : 'un fallo transitorio sí admite otro intento');
+  });
+}
+
+test('red caída al sondear: mensaje de conexión (no de permisos), sin descarga completa, admite reintento', async () => {
+  const { store, el } = await freshStore();
+  store.getState().setAudio(el);
+  store.getState().play(track('r7'));
+  await settle();
+  auto = () => 'network';
+  await store.getState().retryWithAuth();
+  assert.match(store.getState().playbackError, /No pudimos conectar/);
+  assert.equal(blobsCreated.length, 0);
+  await store.getState().retryWithAuth();
+  assert.equal(fetchCalls.length, 2);
+});
+
+test('la pausa de la API general o del refresh NO frena el audio (alcances independientes)', async () => {
+  const { store, el } = await freshStore();
+  store.getState().setAudio(el);
+  noteRateLimit(120_000, 'api');
+  noteRateLimit(120_000, 'refresh');
+  auto = () => ({ status: 200, body: 'wav' });
+  store.getState().play(track('r8', { isPublic: false }));
+  await settle();
+  assert.equal(fetchCalls.length, 1);
+  assert.match(el.src, /^blob:/);
+  assert.equal(rateLimitRemainingMs('files'), 0);
+});
+
+test('la reproducción normal por streaming (200/206) no cambia: URL directa, ninguna solicitud propia, reproducción inmediata', async () => {
+  const { store, el } = await freshStore();
+  store.getState().setAudio(el);
+  const t = track('r9', { isPublic: true });
+  store.getState().play(t);
+  await settle();
+  assert.deepEqual(el.srcLog, [t.audioUrl]);
+  assert.equal(fetchCalls.length, 0);
+  assert.equal(el.playCalls, 1);
+  assert.equal(store.getState().playbackError, null);
+});
+
+test('cambio de pista durante el sondeo: la respuesta tardía no pisa la pista nueva ni crea blobs', async () => {
+  const { store, el } = await freshStore();
+  store.getState().setAudio(el);
+  store.getState().play(track('r10', { isPublic: true }));
+  await settle();
+  const retry = store.getState().retryWithAuth(); // sondeo pendiente
+  await tick();
+  store.getState().play(track('r11', { isPublic: true }));
+  await settle();
+  fetchCalls[0].respond(206, 'x');
+  await retry;
+  await settle();
+  assert.equal(blobsCreated.length, 0);
+  assert.equal(fetchCalls.length, 1, 'la respuesta del sondeo viejo no dispara la descarga');
+  assert.equal(store.getState().track.id, 'r11');
+});
+
+
+// ═════════════ <audio> limpio y reintento de la misma pista privada (defecto previo: el elemento conservaba la pista anterior) ═════════════
+
+const privateTrack = (id) => track(id, { isPublic: false });
+const rateLimitedAuto = (retryAfter = '25') => () => ({ status: 429, body: '{}', headers: { 'Retry-After': retryAfter } });
+
+test('pista PÚBLICA → PRIVADA con error de carga: el <audio> no conserva la fuente anterior ni reproduce audio equivocado', async () => {
+  const { store, el } = await freshStore();
+  store.getState().setAudio(el);
+  const pub = track('a1', { isPublic: true });
+  store.getState().play(pub);
+  await settle();
+  assert.equal(el.currentSrc, pub.audioUrl, 'sonando la pública (URL directa)');
+  assert.equal(el.playedLog.length, 1);
+
+  auto = rateLimitedAuto();
+  store.getState().play(privateTrack('a2'));
+  await settle();
+  assert.equal(fetchCalls.length, 1, 'una sola solicitud: la descarga autenticada');
+  assert.equal(el.getAttribute('src'), null, 'sin atributo src');
+  assert.equal(el.currentSrc, '', 'currentSrc de la pista anterior NO sobrevive');
+  assert.deepEqual(el.ops.slice(-3), ['pause', 'removeAttribute', 'load']);
+  assert.match(store.getState().playbackError, /muchas solicitudes de audio/);
+  assert.equal(store.getState().isPlaying, false);
+  assert.equal(el.playedLog.length, 1, 'no volvió a sonar nada (ni la pista anterior)');
+});
+
+test('limpieza mediante load(): pause → removeAttribute → load, en ese orden, y el elemento queda vacío', async () => {
+  const { store, el } = await freshStore();
+  store.getState().setAudio(el);
+  store.getState().play(track('b1', { isPublic: true }));
+  await settle();
+  const loadsBefore = el.loadCalls;
+  auto = () => ({ status: 200, body: 'wav' });
+  store.getState().play(privateTrack('b2'));
+  await settle();
+  assert.ok(el.loadCalls > loadsBefore, 'se llamó a load() al pasar a la pista privada');
+  const i = el.ops.indexOf('removeAttribute');
+  assert.deepEqual(el.ops.slice(i - 1, i + 2), ['pause', 'removeAttribute', 'load']);
+  assert.match(el.src, /^blob:/, 'y la pista privada se cargó con su blob');
+  assert.equal(el.currentSrc, el.src);
+});
+
+test('segundo clic en la MISMA pista privada durante la pausa por 429: ninguna solicitud, mensaje de límite y no se llama a el.play()', async () => {
+  const { store, el } = await freshStore();
+  store.getState().setAudio(el);
+  store.getState().play(track('c1', { isPublic: true }));
+  await settle();
+  const priv = privateTrack('c2');
+  auto = rateLimitedAuto('30');
+  store.getState().play(priv);
+  await settle();
+  assert.equal(fetchCalls.length, 1);
+  const plays = el.playCalls;
+
+  store.getState().play(priv); // 2.º clic, misma pista, durante la pausa
+  await settle();
+  assert.equal(fetchCalls.length, 1, 'ninguna solicitud adicional (ni sondeo ni descarga)');
+  assert.equal(el.playCalls, plays, 'no se llamó a el.play(): no hay nada que reproducir');
+  assert.equal(el.currentSrc, '', 'tampoco se reanuda la pista anterior');
+  assert.match(store.getState().playbackError, /muchas solicitudes de audio/);
+  assert.equal(store.getState().isPlaying, false);
+  assert.ok(rateLimitRemainingMs('files') > 20_000);
+  store.getState().play(priv);
+  await settle();
+  assert.equal(fetchCalls.length, 1, 'y tampoco con más clics');
+});
+
+test('terminada la pausa, el mismo clic reintenta: descarga autenticada, reproduce la pista CORRECTA y limpia el error', async () => {
+  const { store, el } = await freshStore();
+  store.getState().setAudio(el);
+  const pub = track('d1', { isPublic: true });
+  store.getState().play(pub);
+  await settle();
+  const priv = privateTrack('d2');
+  auto = rateLimitedAuto('30');
+  store.getState().play(priv);
+  await settle();
+  assert.equal(fetchCalls.length, 1);
+
+  resetRateLimitGate(); // terminó la pausa
+  auto = () => ({ status: 200, body: 'wav' });
+  store.getState().play(priv);
+  await settle();
+  assert.equal(fetchCalls.length, 2, 'ahora sí sale la descarga');
+  assert.equal(authHeader(fetchCalls[1]), 'Bearer tok-123');
+  assert.equal(rangeOf(fetchCalls[1]), undefined, 'descarga completa autenticada (sin Range)');
+  assert.match(el.src, /^blob:/);
+  assert.equal(el.currentSrc, el.src);
+  assert.notEqual(el.playedLog[el.playedLog.length - 1], pub.audioUrl, 'la última reproducción NO es la pista anterior');
+  assert.equal(el.playedLog[el.playedLog.length - 1], el.src);
+  assert.equal(store.getState().playbackError, null);
+  assert.equal(store.getState().isPlaying, true);
+});
+
+test('un clic repetido mientras la descarga autenticada sigue en curso NO duplica la solicitud', async () => {
+  const { store, el } = await freshStore();
+  store.getState().setAudio(el);
+  const priv = privateTrack('e1');
+  store.getState().play(priv); // la solicitud queda pendiente (sin auto)
+  await settle();
+  assert.equal(fetchCalls.length, 1);
+  store.getState().play(priv);
+  store.getState().play(priv);
+  store.getState().toggle();
+  await settle();
+  assert.equal(fetchCalls.length, 1, 'no se lanza otra descarga ni se cancela la vigente');
+  assert.ok(el.playedLog.every((s) => s === ''), 'el.play() pendiente sobre un elemento limpio: nunca suena una fuente anterior');
+});
+
+test('stop(): deja el <audio> vacío (load) y la pista anterior no puede volver a sonar', async () => {
+  const { store, el } = await freshStore();
+  store.getState().setAudio(el);
+  const pub = track('f1', { isPublic: true });
+  store.getState().play(pub);
+  await settle();
+  assert.equal(el.currentSrc, pub.audioUrl);
+  store.getState().stop();
+  assert.equal(el.getAttribute('src'), null);
+  assert.equal(el.currentSrc, '', 'sin recurso conectado');
+  assert.deepEqual(el.ops.slice(-3), ['pause', 'removeAttribute', 'load']);
+  assert.equal(store.getState().track, null);
+});
+
+test('hardReset(): deja el <audio> vacío (load) igual que stop()', async () => {
+  const { store, el } = await freshStore();
+  store.getState().setAudio(el);
+  const pub = track('g1', { isPublic: true });
+  store.getState().play(pub);
+  await settle();
+  store.getState().hardReset();
+  assert.equal(el.getAttribute('src'), null);
+  assert.equal(el.currentSrc, '');
+  assert.deepEqual(el.ops.slice(-3), ['pause', 'removeAttribute', 'load']);
+});
+
+test('reproducción normal: pública (URL directa) y privada (blob) siguen igual; pausa y reanudación de una pista YA cargada usan el.play() sin nuevas solicitudes', async () => {
+  const { store, el } = await freshStore();
+  store.getState().setAudio(el);
+  const pub = track('h1', { isPublic: true });
+  store.getState().play(pub);
+  await settle();
+  assert.deepEqual(el.srcLog, [pub.audioUrl]);
+  assert.equal(fetchCalls.length, 0);
+  store.getState().play(pub); // pausa
+  await settle();
+  assert.equal(store.getState().isPlaying, false);
+  store.getState().play(pub); // reanuda con el.play()
+  await settle();
+  assert.equal(store.getState().isPlaying, true);
+  assert.equal(fetchCalls.length, 0, 'la pública nunca pide por su cuenta');
+
+  auto = () => ({ status: 200, body: 'wav' });
+  const priv = privateTrack('h2');
+  store.getState().play(priv);
+  await settle();
+  assert.equal(fetchCalls.length, 1);
+  assert.match(el.src, /^blob:/);
+  assert.equal(store.getState().isPlaying, true);
+  const plays = el.playCalls;
+  store.getState().play(priv); // pausa
+  await settle();
+  assert.equal(store.getState().isPlaying, false);
+  store.getState().play(priv); // reanuda: el blob sigue conectado → el.play(), sin otra descarga
+  await settle();
+  assert.equal(fetchCalls.length, 1, 'la pista privada ya cargada NO vuelve a descargarse');
+  assert.equal(el.playCalls, plays + 1);
+  assert.equal(store.getState().isPlaying, true);
+  assert.equal(el.getAttribute('src'), el.src);
+});
+
+// El botón de reproducir del reproductor, de las tarjetas y de MediaSession llama a toggle(): es el camino real del «segundo clic».
+
+test('toggle() sobre una pista privada SIN fuente válida durante la pausa por 429: ninguna solicitud, mensaje de límite y sin el.play()', async () => {
+  const { store, el } = await freshStore();
+  store.getState().setAudio(el);
+  store.getState().play(track('t1', { isPublic: true }));
+  await settle();
+  auto = rateLimitedAuto('30');
+  store.getState().play(privateTrack('t2'));
+  await settle();
+  assert.equal(fetchCalls.length, 1);
+  const plays = el.playCalls;
+
+  store.getState().toggle(); // botón de reproducir (barra, tarjeta o MediaSession)
+  await settle();
+  assert.equal(fetchCalls.length, 1, 'ninguna solicitud adicional durante la pausa');
+  assert.equal(el.playCalls, plays, 'no se llamó a el.play()');
+  assert.equal(el.currentSrc, '', 'ni se reanuda la pista anterior');
+  assert.match(store.getState().playbackError, /muchas solicitudes de audio/);
+  assert.equal(store.getState().isPlaying, false);
+  store.getState().toggle();
+  store.getState().toggle();
+  await settle();
+  assert.equal(fetchCalls.length, 1, 'y tampoco con más clics');
+});
+
+test('toggle() terminada la pausa: reintenta por el flujo autenticado y reproduce la pista correcta', async () => {
+  const { store, el } = await freshStore();
+  store.getState().setAudio(el);
+  const pub = track('t3', { isPublic: true });
+  store.getState().play(pub);
+  await settle();
+  auto = rateLimitedAuto('30');
+  store.getState().play(privateTrack('t4'));
+  await settle();
+  resetRateLimitGate();
+  auto = () => ({ status: 200, body: 'wav' });
+  store.getState().toggle();
+  await settle();
+  assert.equal(fetchCalls.length, 2);
+  assert.equal(authHeader(fetchCalls[1]), 'Bearer tok-123');
+  assert.match(el.src, /^blob:/);
+  assert.equal(el.playedLog[el.playedLog.length - 1], el.src, 'suena el blob de la pista correcta');
+  assert.notEqual(el.playedLog[el.playedLog.length - 1], pub.audioUrl);
+  assert.equal(store.getState().playbackError, null);
+  assert.equal(store.getState().isPlaying, true);
+});
+
+test('toggle() sobre una pista privada YA cargada pausa y reanuda con el.play(), sin nuevas descargas; y la pública no se ve afectada', async () => {
+  const { store, el } = await freshStore();
+  store.getState().setAudio(el);
+  auto = () => ({ status: 200, body: 'wav' });
+  store.getState().play(privateTrack('t5'));
+  await settle();
+  assert.equal(fetchCalls.length, 1);
+  store.getState().toggle(); // pausa
+  await settle();
+  assert.equal(store.getState().isPlaying, false);
+  const plays = el.playCalls;
+  store.getState().toggle(); // reanuda: el blob sigue conectado
+  await settle();
+  assert.equal(fetchCalls.length, 1, 'sin otra descarga');
+  assert.equal(el.playCalls, plays + 1, 'el.play() normal');
+  assert.equal(store.getState().isPlaying, true);
+
+  store.getState().play(track('t6', { isPublic: true }));
+  await settle();
+  store.getState().toggle();
+  await settle();
+  const before = el.playCalls;
+  store.getState().toggle();
+  await settle();
+  assert.equal(el.playCalls, before + 1, 'la pública reanuda con el.play() como siempre');
+  assert.equal(fetchCalls.length, 1);
+});
+
+
+// ═════════════ Recuperación de pistas PÚBLICAS tras un fallo de la carga directa, y MediaSession ═════════════
+
+const unhandled = [];
+process.on('unhandledRejection', (reason) => unhandled.push(String((reason && reason.message) || reason)));
+const flush = async () => { await settle(); await new Promise((r) => setTimeout(r, 30)); };
+
+/** Reproduce una pública por URL directa y simula que la carga falló y se activó el sondeo (onError → retryWithAuth). */
+async function publicFailed(id, probe) {
+  const { store, el } = await freshStore();
+  store.getState().setAudio(el);
+  const pub = track(id, { isPublic: true });
+  store.getState().play(pub);
+  await settle();
+  el.failLoad();
+  auto = probe;
+  await store.getState().retryWithAuth();
+  await settle();
+  return { store, el, pub };
+}
+
+test('pública con 429 en la carga directa: reintentar durante la pausa no genera solicitudes, no llama a play() ni a load() y muestra el límite', async () => {
+  unhandled.length = 0;
+  const { store, el, pub } = await publicFailed('u1', rateLimitedAuto('30'));
+  assert.equal(fetchCalls.length, 1, 'solo el sondeo de 1 byte');
+  assert.ok(isProbe(fetchCalls[0]));
+  assert.match(store.getState().playbackError, /muchas solicitudes de audio/);
+  assert.equal(mediaSession.playbackState, 'paused');
+  const plays = el.playCalls;
+  const loads = el.loadCalls;
+  store.getState().toggle(); // botón de la barra / tarjeta / MediaSession
+  store.getState().play(pub); // 2.º clic sobre la misma pista
+  store.getState().toggle();
+  await flush();
+  assert.equal(fetchCalls.length, 1, 'ninguna solicitud durante la pausa');
+  assert.equal(el.playCalls, plays, 'no se llamó a el.play()');
+  assert.equal(el.loadCalls, loads, 'ni se reinició el elemento (eso sería una solicitud directa nueva)');
+  assert.match(store.getState().playbackError, /muchas solicitudes de audio/);
+  assert.equal(store.getState().isPlaying, false);
+  assert.equal(mediaSession.playbackState, 'paused');
+  assert.deepEqual(unhandled, [], 'ninguna promesa rechazada sin manejar');
+});
+
+test('pública: terminada la pausa por 429, el mismo botón la recupera (load() + play()) y suena la pista CORRECTA', async () => {
+  unhandled.length = 0;
+  const { store, el, pub } = await publicFailed('u2', rateLimitedAuto('30'));
+  resetRateLimitGate(); // terminó la pausa
+  const loads = el.loadCalls;
+  store.getState().toggle();
+  await flush();
+  assert.equal(el.loadCalls, loads + 1, 'el elemento se reinició con load()');
+  assert.equal(el.networkState, 2, 'volvió a seleccionar el recurso');
+  assert.equal(el.playedLog[el.playedLog.length - 1], pub.audioUrl, 'suena la misma pista, no otra');
+  assert.equal(store.getState().isPlaying, true);
+  assert.equal(store.getState().playbackError, null);
+  assert.equal(mediaSession.playbackState, 'playing');
+  assert.deepEqual(unhandled, []);
+});
+
+test('pública con 500 en la carga directa: mensaje genérico y, al volver el servidor, play() (misma pista) la recupera', async () => {
+  unhandled.length = 0;
+  const { store, el, pub } = await publicFailed('u3', () => ({ status: 500, body: '{}' }));
+  assert.match(store.getState().playbackError, /No pudimos cargar el audio/);
+  assert.equal(rateLimitRemainingMs('files'), 0, 'un 500 no activa la pausa de archivos');
+  auto = null;
+  const loads = el.loadCalls;
+  store.getState().play(pub); // segundo clic sobre la misma pista
+  await flush();
+  assert.equal(el.loadCalls, loads + 1);
+  assert.equal(el.playedLog[el.playedLog.length - 1], pub.audioUrl);
+  assert.equal(store.getState().isPlaying, true);
+  assert.equal(store.getState().playbackError, null);
+  assert.deepEqual(unhandled, []);
+});
+
+test('pública tras un error de red: mensaje de conexión y recuperación con el mismo botón; el sondeo puede repetirse', async () => {
+  unhandled.length = 0;
+  const { store, el, pub } = await publicFailed('u4', () => 'network');
+  assert.match(store.getState().playbackError, /No pudimos conectar/);
+  store.getState().toggle();
+  await flush();
+  assert.equal(el.playedLog[el.playedLog.length - 1], pub.audioUrl);
+  assert.equal(store.getState().isPlaying, true);
+  // si la carga volviera a fallar, el onError del <audio> puede iniciar OTRO sondeo (retriedTrack se liberó)
+  el.failLoad();
+  auto = () => ({ status: 500, body: '{}' });
+  const before = fetchCalls.length;
+  await store.getState().retryWithAuth();
+  assert.equal(fetchCalls.length, before + 1);
+  assert.deepEqual(unhandled, []);
+});
+
+test('el.play() rechazado (NotSupportedError) se maneja: sin promesas sin manejar, isPlaying false y MediaSession en pausa', async () => {
+  unhandled.length = 0;
+  const { store, el } = await freshStore();
+  store.getState().setAudio(el);
+  const pub = track('u5', { isPublic: true });
+  store.getState().play(pub);
+  await settle();
+  assert.equal(store.getState().isPlaying, true);
+  store.getState().toggle(); // pausa
+  await settle();
+  el.rejectPlay = true; // el navegador rechaza play() (sin error de red previo)
+  store.getState().toggle();
+  await flush();
+  assert.equal(store.getState().isPlaying, false);
+  assert.equal(mediaSession.playbackState, 'paused');
+  store.getState().play(pub); // atajo de la misma pista: también rechazado y manejado
+  await flush();
+  assert.equal(store.getState().isPlaying, false);
+  assert.deepEqual(unhandled, [], 'ningún rechazo sin manejar ni en toggle() ni en play()');
+});
+
+test('MediaSession tras un fallo de descarga PRIVADA: pasa a «paused» (no queda en «playing») y conserva los metadatos de la pista', async () => {
+  const { store, el } = await freshStore();
+  store.getState().setAudio(el);
+  store.getState().play(track('m1', { isPublic: true, title: 'Pública' }));
+  await settle();
+  assert.equal(mediaSession.playbackState, 'playing');
+  auto = rateLimitedAuto('30');
+  store.getState().play(privateTrack('m2'));
+  assert.equal(mediaSession.playbackState, 'paused', 'mientras se descarga ya no suena la pista anterior');
+  await settle();
+  assert.equal(store.getState().isPlaying, false);
+  assert.equal(mediaSession.playbackState, 'paused', 'y tras el fallo tampoco');
+  assert.equal(mediaSession.metadata.title, 'Tema m2', 'los metadatos son los de la pista elegida, sin tocar');
+  // recuperación: vuelve a «playing» cuando la pista suena de verdad
+  resetRateLimitGate();
+  auto = () => ({ status: 200, body: 'wav' });
+  store.getState().toggle();
+  await settle();
+  assert.equal(mediaSession.playbackState, 'playing');
+  assert.equal(el.playedLog[el.playedLog.length - 1], el.src);
+});
+
+test('reproducción normal sin fallos: pausar y reanudar una pública no reinicia el elemento ni pide nada', async () => {
+  unhandled.length = 0;
+  const { store, el } = await freshStore();
+  store.getState().setAudio(el);
+  const pub = track('n1', { isPublic: true });
+  store.getState().play(pub);
+  await settle();
+  const loads = el.loadCalls;
+  store.getState().toggle(); // pausa
+  await settle();
+  store.getState().toggle(); // reanuda
+  await settle();
+  store.getState().play(pub); // pausa (misma pista)
+  await settle();
+  store.getState().play(pub); // reanuda
+  await settle();
+  assert.equal(el.loadCalls, loads, 'sin load(): el elemento sano no se reinicia');
+  assert.equal(fetchCalls.length, 0);
+  assert.equal(store.getState().isPlaying, true);
+  assert.equal(mediaSession.playbackState, 'playing');
+  assert.ok(el.playedLog.every((s) => s === pub.audioUrl), 'solo suena la pista elegida');
+  assert.deepEqual(unhandled, []);
 });

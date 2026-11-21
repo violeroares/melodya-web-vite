@@ -67,6 +67,7 @@ export function parseRetryAfter(value: unknown, now: number = Date.now()): numbe
   let ms: number;
   if (/^\d+(\.\d+)?$/.test(raw)) ms = Number(raw) * 1000;
   else {
+    if (!/[a-z]/i.test(raw)) return undefined; // una fecha HTTP lleva letras (día/mes/GMT): «-5» o «12:30» no son un Retry-After válido
     const t = Date.parse(raw);
     if (Number.isNaN(t)) return undefined;
     ms = t - now;
@@ -82,25 +83,82 @@ export function retryAfterFromHeaders(headers: unknown): number | undefined {
   return parseRetryAfter(v);
 }
 
-/* ── Compuerta global de rate limit ─────────────────────── */
-
-const DEFAULT_RATE_LIMIT_PAUSE_MS = 30_000;
-let blockedUntil = 0;
-
-/** Registra un 429. El trabajo en SEGUNDO PLANO (polling, refresh proactivo, reintentos) espera hasta que pase. */
-export function noteRateLimit(retryAfterMs?: number, now: number = Date.now()): void {
-  const pause = retryAfterMs && retryAfterMs > 0 ? retryAfterMs : DEFAULT_RATE_LIMIT_PAUSE_MS;
-  blockedUntil = Math.max(blockedUntil, now + Math.min(pause, MAX_RETRY_AFTER_MS));
+/**
+ * `error.retryAfterSec` del cuerpo de un 429 del backend (aditivo, ver melodya.backend rateLimit.js). Es el respaldo cuando el navegador
+ * no puede leer la cabecera (CORS solo la expone en backends nuevos). Solo se acepta un número de segundos.
+ */
+export function retryAfterFromBody(payload: unknown): number | undefined {
+  if (!payload || typeof payload !== 'object') return undefined;
+  const sec = (payload as { retryAfterSec?: unknown }).retryAfterSec;
+  if (typeof sec !== 'number' || !Number.isFinite(sec) || sec < 0) return undefined;
+  return parseRetryAfter(String(sec));
 }
 
-/** ms que faltan para que termine el bloqueo (0 = libre). */
-export function rateLimitRemainingMs(now: number = Date.now()): number {
-  return Math.max(0, blockedUntil - now);
+/* ── Compuerta de rate limit POR ALCANCE ─────────────────── */
+
+/**
+ * El backend tiene limitadores INDEPENDIENTES (general, refresh, auth, asistente, admin, archivos, webhooks): un 429 de uno no dice nada de
+ * los demás. La compuerta local sigue esa separación para no bloquear de más:
+ *   'refresh'  POST /auth/refresh
+ *   'api'      el resto de la API general (consultas, perfil, biblioteca…)
+ *   'files'    GET /files/:id/stream (portadas, avatares, audio): limitador propio del backend
+ *   'auth'     login / registro / recuperación de contraseña   ┐
+ *   'assistant' /assistant/*                                    ├ NO activan compuerta: son errores de ESA operación
+ *   'admin'    /admin/*                                         ┘
+ * Los archivos no pasan por el cliente Axios (<img>, <audio> y fetch): quien los pide (auth-image, reproductor) registra y consulta el alcance
+ * 'files'. Un 429 de archivos NO frena la API general ni el refresh, y viceversa.
+ */
+export type RateScope = 'refresh' | 'api' | 'files' | 'auth' | 'assistant' | 'admin';
+
+const GATED_SCOPES = ['refresh', 'api', 'files'] as const;
+type GatedScope = (typeof GATED_SCOPES)[number];
+
+const isGated = (scope: RateScope): scope is GatedScope => scope === 'refresh' || scope === 'api' || scope === 'files';
+
+/**
+ * Alcance de una solicitud del cliente Axios a partir de su URL (relativa al baseURL, p. ej. «/auth/login», o absoluta). Coincide con los
+ * prefijos reales del backend (routes/index.js) y con los limitadores de auth.routes.js: SOLO register, login, forgot-password y
+ * reset-password llevan el limitador estricto; logout, logout-all y change-password solo pasan por el general.
+ * El enrutado del backend ignora mayúsculas y la barra final: acá también.
+ */
+export function rateLimitScopeOf(url: string | null | undefined, basePath = ''): RateScope {
+  let p = String(url ?? '').replace(/^[a-z][a-z0-9+.-]*:\/\/[^/]+/i, ''); // sin origen
+  p = (p.split('?')[0] ?? '').split('#')[0] ?? '';
+  const base = basePath.replace(/\/+$/, '').toLowerCase();
+  p = p.toLowerCase();
+  if (base && (p === base || p.startsWith(`${base}/`))) p = p.slice(base.length);
+  p = `/${p.replace(/^\/+/, '')}`.replace(/\/+$/, '') || '/';
+  if (p === '/auth/refresh') return 'refresh';
+  if (/^\/auth\/(login|register|forgot-password|reset-password)$/.test(p)) return 'auth';
+  if (p === '/assistant' || p.startsWith('/assistant/')) return 'assistant';
+  if (p === '/admin' || p.startsWith('/admin/')) return 'admin';
+  if (/^\/files\/[^/]+\/stream$/.test(p)) return 'files';
+  return 'api';
+}
+
+const DEFAULT_RATE_LIMIT_PAUSE_MS = 30_000;
+const blockedUntil: Record<GatedScope, number> = { refresh: 0, api: 0, files: 0 };
+
+/**
+ * Registra un 429 del alcance indicado (por defecto la API general). Un alcance sin compuerta (auth, assistant, admin) no hace nada.
+ * El trabajo en SEGUNDO PLANO de ESE alcance (refresh proactivo, hidratación del perfil, reintentos de consultas) espera hasta que pase.
+ */
+export function noteRateLimit(retryAfterMs?: number, scope: RateScope = 'api', now: number = Date.now()): void {
+  if (!isGated(scope)) return;
+  const pause = retryAfterMs && retryAfterMs > 0 ? retryAfterMs : DEFAULT_RATE_LIMIT_PAUSE_MS;
+  blockedUntil[scope] = Math.max(blockedUntil[scope], now + Math.min(pause, MAX_RETRY_AFTER_MS));
+}
+
+/** ms que faltan para que termine el bloqueo del alcance (0 = libre; los alcances sin compuerta siempre 0). */
+export function rateLimitRemainingMs(scope: RateScope = 'api', now: number = Date.now()): number {
+  return isGated(scope) ? Math.max(0, blockedUntil[scope] - now) : 0;
 }
 
 /** Solo pruebas. */
 export function resetRateLimitGate(): void {
-  blockedUntil = 0;
+  blockedUntil.refresh = 0;
+  blockedUntil.api = 0;
+  blockedUntil.files = 0;
 }
 
 /* ── Backoff ────────────────────────────────────────────── */
@@ -112,10 +170,10 @@ export function backoffMs(baseMs: number, failures: number, maxMs: number, jitte
   return Math.round(raw * (1 + jitterRatio * rand()));
 }
 
-/** Espera tras un error de polling: backoff, nunca menos que Retry-After ni que la compuerta global. */
-export function pollErrorDelayMs(baseMs: number, failures: number, err: unknown, maxMs = 5 * 60_000, rand: () => number = Math.random): number {
+/** Espera tras un error de polling: backoff, nunca menos que Retry-After ni que la pausa vigente del alcance consultado. */
+export function pollErrorDelayMs(baseMs: number, failures: number, err: unknown, maxMs = 5 * 60_000, rand: () => number = Math.random, scope: RateScope = 'api'): number {
   const retryAfter = err && typeof err === 'object' && typeof (err as ErrorLike).retryAfterMs === 'number' ? ((err as ErrorLike).retryAfterMs as number) : 0;
-  return Math.max(backoffMs(baseMs, failures, maxMs, 0.2, rand), retryAfter, rateLimitRemainingMs());
+  return Math.max(backoffMs(baseMs, failures, maxMs, 0.2, rand), retryAfter, rateLimitRemainingMs(scope));
 }
 
 /* ── React Query ────────────────────────────────────────── */
