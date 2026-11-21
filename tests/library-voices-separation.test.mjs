@@ -81,10 +81,10 @@ test('«Muestras sin clonar» conserva Play, Enviar a la Papelera y Clonar mi vo
 test('Samples lista también las grabaciones ya clonadas (sin filtro cloned), conserva su modal de edición y no usa el de voces', () => {
   assert.match(samples, /samplesApi\.list\(\{ kind: kind === 'ALL' \? undefined : kind, pageSize: 50 \}\)/);
   assert.doesNotMatch(samples, /cloned: false/, 'la grabación original de una voz clonada sigue siendo un sample');
-  assert.match(samples, /Editar sample/);
+  assert.match(samples, /Editar audio/); // «Samples» pasó a llamarse «Audios» en los textos visibles (diseño de Biblioteca)
   assert.doesNotMatch(samples, /EditVoiceDialog|Editar voz/);
   assert.match(voices, /Editar voz/);
-  assert.doesNotMatch(voices, /Editar sample|EditSampleDialog/);
+  assert.doesNotMatch(voices, /Editar audio|Editar sample|EditSampleDialog/);
   assert.match(samples, /<SamplePlayButton/, 'Play de samples intacto');
   assert.match(samples, /samplesApi\.remove\(id\)/, 'se puede eliminar cualquier sample de esta sección');
 });

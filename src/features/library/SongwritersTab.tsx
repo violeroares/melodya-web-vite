@@ -6,7 +6,7 @@
  */
 import React, { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { FileText, Loader2, MoreVertical, Music4, PenLine, Pencil, Play, Plus, Search, Trash2 } from 'lucide-react';
+import { Loader2, MoreVertical, PenLine, Pencil, Play, Plus, Search, Trash2, Users } from 'lucide-react';
 import { songwritersApi, lyricsApi, songsApi } from '@/lib/api';
 import { apiFileUrl } from '@/lib/api/client';
 import { toUserMessage } from '@/lib/errors';
@@ -27,7 +27,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Checkbox } from '@/components/ui/checkbox';
 import { cn } from '@/lib/utils';
-import { ConfirmDialog, Field, LIST_MENU_COMFORTABLE_MOBILE, TabCtaButton, ViewToggle, useViewMode } from './library-utils';
+import { ConfirmDialog, Field, LIST_MENU_COMFORTABLE_MOBILE, PencilSolid, TabCtaButton, TrashSolid, ViewToggle, useViewMode } from './library-utils';
 
 export function SongwritersTab() {
   const personasGate = usePlanGate('LYRIC_PERSONAS'); // E5: sin letristas en el plan se muestra el aviso de upgrade
@@ -178,84 +178,108 @@ export function SongwritersTab() {
         )
       ) : (
         <div className={cn(list ? 'flex flex-col gap-2' : 'grid gap-4 sm:grid-cols-2 xl:grid-cols-3')}>
-          {songwriters.map((persona) => (
-            <article
-              key={persona.id}
-              className={cn(
-                'group relative flex h-full flex-col rounded-cover border border-border/70 bg-surface p-4 transition-colors hover:border-amber/40',
-                list && 'p-3 sm:flex-row sm:items-center sm:gap-4 sm:pr-14'
-              )}
-            >
-              <div className={cn('flex items-start gap-3 pr-10', list && 'sm:w-64 sm:shrink-0 sm:items-center sm:pr-0')}>
-                <div className="flex size-11 shrink-0 items-center justify-center rounded-full bg-element-lyrics text-[#131C33]" aria-hidden>
-                  <PenLine className="h-[22px] w-[22px]" />
+          {songwriters.map((persona) => {
+            const nLyrics = persona.lyricIds.length;
+            const nSongs = persona.songIds.length;
+            /* design-V2 › Biblioteca › Letristas: «N letras» (color de etiqueta) · «M canciones» (color de texto) */
+            const playBtn = nSongs > 0 && (
+              <button
+                type="button"
+                onClick={() => void playCollection(persona)}
+                disabled={playingPersona !== null}
+                className={cn("persona-play flex shrink-0 cursor-pointer items-center justify-center rounded-full border-[1.5px] border-foreground text-foreground transition-colors hover:bg-foreground/10 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground disabled:opacity-60", list ? "size-9" : "size-8")}
+                aria-label={`Reproducir la colección ${persona.name} (${nSongs} ${nSongs === 1 ? 'canción' : 'canciones'})`}
+                title="Reproducir las canciones de esta colección: Colección"
+              >
+                {playingPersona === persona.id ? (
+                  <Loader2 className={cn("animate-spin", list ? "h-[18px] w-[18px]" : "h-3.5 w-3.5")} aria-hidden />
+                ) : (
+                  <Play className={cn("translate-x-px fill-current", list ? "h-[18px] w-[18px]" : "h-3.5 w-3.5")} aria-hidden />
+                )}
+              </button>
+            );
+            return (
+              <article
+                key={persona.id}
+                className={cn(
+                  'group relative h-full overflow-hidden rounded-cover border border-[var(--m-border)] bg-[var(--m-input)] p-4 transition-colors hover:border-amber/40',
+                  /* Grilla: encabezado (avatar + nombre) y, debajo, descripción y referencias a todo el ancho de la card. Lista: una fila. */
+                  list ? 'flex items-center gap-3.5 py-3 pr-14 sm:pr-3' : 'grid grid-cols-[3rem_minmax(0,1fr)] content-start gap-x-3.5 gap-y-2.5'
+                )}
+              >
+                <span aria-hidden className={cn('flex size-12 shrink-0 items-center justify-center rounded-full bg-[var(--m-orbit-0)] text-[#FFF6F2] dark:text-[#131C33]', !list && 'self-center')}>
+                  <Users className="h-[22px] w-[22px]" />
+                </span>
+                <div className={list ? 'flex min-w-0 flex-1 flex-col' : 'contents'}>
+                  <div className={cn('min-w-0', !list && 'self-center pr-9')}>
+                    <h3 className="truncate font-display text-lg font-bold leading-[1.2] text-foreground">{persona.name}</h3>
+                    <p className="mt-0.5 text-[13px] leading-[1.35] text-muted-foreground">Creado {formatRelative(persona.createdAt)}</p>
+                  </div>
+                  <p className={cn('text-[13px] leading-tight text-muted-foreground', list ? 'mt-2 line-clamp-2' : 'col-span-2 line-clamp-3 min-h-[3.75em]')}>
+                    {persona.description}
+                  </p>
+                  <div className={cn('flex items-center gap-3', list ? 'mt-2' : 'col-span-2')}>
+                    {!list && playBtn}
+                    <p className="flex min-w-0 flex-wrap items-center gap-x-2 text-[13px] leading-[1.2] text-muted-foreground">
+                      {nLyrics === 0 && nSongs === 0 && <span>Sin referencias</span>}
+                      {nLyrics > 0 && (
+                        <span className="font-semibold whitespace-nowrap text-label">{nLyrics} {nLyrics === 1 ? 'letra ref.' : 'letras ref.'}</span>
+                      )}
+                      {nLyrics > 0 && nSongs > 0 && <span aria-hidden>·</span>}
+                      {nSongs > 0 && (
+                        <span className="whitespace-nowrap text-foreground">{nSongs} {nSongs === 1 ? 'canción ref.' : 'canciones ref.'}</span>
+                      )}
+                    </p>
+                  </div>
                 </div>
-                <div className="min-w-0 flex-1">
-                  <h3 className="truncate font-semibold text-foreground">{persona.name}</h3>
-                  <p className="text-xs text-muted-foreground">Creado {formatRelative(persona.createdAt)}</p>
-                </div>
-              </div>
-              <p className={cn('mt-3 line-clamp-3 min-h-14 text-sm leading-snug text-muted-foreground', list && 'mt-2 min-h-0 line-clamp-2 sm:mt-0 sm:flex-1')}>
-                {persona.description}
-              </p>
-              <div className={cn('mt-3 flex flex-wrap items-center gap-x-3 gap-y-1.5 border-t border-border/60 pt-3', list && 'sm:mt-0 sm:w-[22rem] sm:shrink-0 sm:flex-nowrap sm:border-t-0 sm:pt-0')}>
-                {persona.songIds.length > 0 && (
-                  <Button
-                    size="sm"
-                    onClick={() => void playCollection(persona)}
-                    disabled={playingPersona !== null}
-                    className="persona-play h-8 gap-1.5 rounded-full gradient-warm px-3 text-xs font-bold text-primary-foreground hover:text-primary-foreground disabled:opacity-60"
-                    aria-label={`Reproducir la colección ${persona.name} (${persona.songIds.length} ${persona.songIds.length === 1 ? 'canción' : 'canciones'})`}
-                    title="Reproducir las canciones de esta colección"
-                  >
-                    {playingPersona === persona.id ? (
-                      <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
-                    ) : (
-                      <Play className="h-3.5 w-3.5 translate-x-px fill-current" aria-hidden />
-                    )}
-                    Colección
-                  </Button>
+                {list && (
+                  <div className="flex shrink-0 items-center gap-3 self-center">
+                    {/* Sin canciones no hay play: se reserva su lugar para que el texto conserve el mismo ancho */}
+                    {playBtn || <span aria-hidden className="size-9 shrink-0" />}
+                    {[
+                      { key: 'edit', label: 'Editar', Icon: PencilSolid, onClick: () => setEditing(persona) },
+                      { key: 'delete', label: 'Enviar a la Papelera', Icon: TrashSolid, onClick: () => setToDelete(persona) },
+                    ].map(({ key, label, Icon, onClick }) => (
+                      <button
+                        key={key}
+                        type="button"
+                        onClick={onClick}
+                        title={label}
+                        aria-label={`${label}: ${persona.name}`}
+                        className="flex size-9 shrink-0 cursor-pointer items-center justify-center rounded-full border-[1.5px] border-foreground text-foreground transition-colors hover:bg-foreground/10 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground max-sm:hidden"
+                      >
+                        <Icon className="h-[18px] w-[18px]" />
+                      </button>
+                    ))}
+                  </div>
                 )}
-                {persona.lyricIds.length > 0 && (
-                  <span className="inline-flex items-center gap-1 whitespace-nowrap text-xs font-medium text-muted-foreground">
-                    <FileText className="h-3 w-3" aria-hidden /> {persona.lyricIds.length} {persona.lyricIds.length === 1 ? 'letra ref.' : 'letras ref.'}
-                  </span>
-                )}
-                {persona.songIds.length > 0 && (
-                  <span className="inline-flex items-center gap-1 whitespace-nowrap text-xs font-medium text-muted-foreground">
-                    <Music4 className="h-3 w-3" aria-hidden /> {persona.songIds.length} {persona.songIds.length === 1 ? 'canción ref.' : 'canciones ref.'}
-                  </span>
-                )}
-                {persona.lyricIds.length === 0 && persona.songIds.length === 0 && (
-                  <span className="text-xs text-muted-foreground">Sin referencias</span>
-                )}
-              </div>
 
-              {/* Opciones (editar / eliminar): arriba a la derecha, como en Letras */}
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <button
-                    type="button"
-                    aria-label={`Opciones de ${persona.name}`}
-                    className={cn(
-                      'absolute top-3 right-3 flex h-8 w-8 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-surface-2 hover:text-foreground focus-visible:outline-2 focus-visible:outline-foreground',
-                      list && 'sm:top-1/2 sm:-translate-y-1/2'
-                    )}
-                  >
-                    <MoreVertical className="h-4 w-4" aria-hidden />
-                  </button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" variant="list" className={LIST_MENU_COMFORTABLE_MOBILE}>
-                  <DropdownMenuItem onClick={() => setEditing(persona)}>
-                    <Pencil className="h-4 w-4" aria-hidden /> Editar
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => setToDelete(persona)} className="text-destructive focus:text-destructive">
-                    <Trash2 className="h-4 w-4" aria-hidden /> Enviar a la Papelera
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
-            </article>
-          ))}
+                {/* Opciones (editar / eliminar): arriba a la derecha en grilla y en mobile; en lista (≥ sm) van como botones. */}
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <button
+                      type="button"
+                      aria-label={`Opciones de ${persona.name}`}
+                      className={cn(
+                        'absolute top-3 right-3 flex h-8 w-8 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-surface-2 hover:text-foreground focus-visible:outline-2 focus-visible:outline-foreground',
+                        list && 'top-1/2 -translate-y-1/2 sm:hidden'
+                      )}
+                    >
+                      <MoreVertical className="h-4 w-4" aria-hidden />
+                    </button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" variant="list" className={LIST_MENU_COMFORTABLE_MOBILE}>
+                    <DropdownMenuItem onClick={() => setEditing(persona)}>
+                      <Pencil className="h-4 w-4" aria-hidden /> Editar
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => setToDelete(persona)} className="text-destructive focus:text-destructive">
+                      <Trash2 className="h-4 w-4" aria-hidden /> Enviar a la Papelera
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </article>
+            );
+          })}
         </div>
       )}
 

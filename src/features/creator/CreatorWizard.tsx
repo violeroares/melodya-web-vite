@@ -2,8 +2,8 @@
 /**
  * MELODYA WEB — Creador de canciones: la canción como sistema solar.
  *
- * El centro es la canción y cada elemento que se incorpora es un planeta (Composición y Estilo siempre; Voz, Referencia de
- * audio, Producción y Creatividad con el botón «+»). Cada planeta se abre en un panel para configurarlo o quitarlo, y
+ * El centro es la canción y cada elemento que se incorpora es un planeta (Composición y Estilo siempre; Voz, Audio,
+ * Producción y Creatividad con el botón «+»). Cada planeta se abre en un panel para configurarlo o quitarlo, y
  * antes de generar hay una revisión con lo que se aplica y lo que no.
  *
  * El modelo vive en `song-model.ts` (puro y testeado); la presentación en `SolarSystem.tsx` y `PlanetEditors.tsx`.
@@ -58,7 +58,7 @@ import { SolarSystem, planetIcon, PLANET_DOT } from './SolarSystem';
 import { CompositionEditor, StyleEditor, VoiceEditor, ReferenceEditor, ProductionEditor, CreativityEditor } from './PlanetEditors';
 import {
   emptySong, isEmptySong, parseSong, audioWeightApplies, availability, addPlanet, removePlanet, updatePlanet, validateSong,
-  hasErrors, summarize, describeTreatment, applyLyricsFromStudio, buildGenerationRequest, planetDef, activePlanets,
+  hasErrors, summarize, describeTreatment, applyLyricsFromStudio, buildGenerationRequest, planetDef, activePlanets, hasStyleInputs,
   type SongState, type PlanetId, type Capabilities,
 } from './song-model';
 
@@ -138,6 +138,10 @@ export function CreatorWizard() {
   const [live, setLive] = useState<LiveGen>({ phase: 'idle' });
   /* Animación de lanzamiento sobre el sistema solar (se forma el disco) antes de pasar a la pantalla de generación */
   const [launching, setLaunching] = useState(false);
+  /* Llegada de un elemento nuevo: el planeta sale del «+» y vuela a su lugar cuando el editor que lo guardó terminó de cerrarse. */
+  const [arrival, setArrival] = useState<PlanetId | null>(null);
+  /* Elementos agregados desde el «+» que todavía no se completaron con «Listo»: se dibujan punteados en el sistema. */
+  const [pendingPlanets, setPendingPlanets] = useState<PlanetId[]>([]);
   const [openPlanet, setOpenPlanet] = useState<PlanetId | null>(null);
   const [catalogOpen, setCatalogOpen] = useState(false);
   const [studioOpen, setStudioOpen] = useState(false);
@@ -230,7 +234,7 @@ export function CreatorWizard() {
   // una voz o un audio válidos solo por no estar en la primera página.
   const recovered = source.hydration.samples;
   const caps: Capabilities = useMemo(() => mergeCapabilities({
-    voices: (voiceSamples?.items ?? []).filter((s) => s.sunoPersonaId).map((s) => ({ id: s.id, name: s.name, type: s.type, sunoPersonaId: s.sunoPersonaId, durationSec: s.durationSec })),
+    voices: (voiceSamples?.items ?? []).filter((s) => s.sunoPersonaId).map((s) => ({ id: s.id, name: s.name, type: s.type, sunoPersonaId: s.sunoPersonaId, durationSec: s.durationSec, createdAt: s.createdAt })),
     references: (refSamples?.items ?? []).map((s) => ({ id: s.id, name: s.name, type: s.type, durationSec: s.durationSec })),
   }, recovered), [voiceSamples, refSamples, recovered]);
 
@@ -259,14 +263,23 @@ export function CreatorWizard() {
     window.addEventListener('resize', onResize);
     return () => window.removeEventListener('resize', onResize);
   }, [openPlanet]);
+  /* Composición y Estilo están siempre en el sistema: se dibujan punteados mientras no tienen nada (o se están completando) y se rellenan con «Listo». */
+  const [baseConfirmed, setBaseConfirmed] = useState<PlanetId[]>([]);
+  const [baseEditing, setBaseEditing] = useState<PlanetId | null>(null);
+  const baseEmpty = (id: PlanetId) => id === 'composition'
+    ? !song.composition.idea.trim() && !song.composition.lyrics.trim() && !song.composition.title.trim()
+    : !hasStyleInputs(song);
+  const basePending = (['composition', 'style'] as PlanetId[]).filter((id) => !baseConfirmed.includes(id) && (baseEmpty(id) || (baseEditing === id && openPlanet === id)));
   // Mientras se lee la configuración de la versión de origen no se edita: así nada de lo que escriba el usuario compite con esa respuesta.
-  const openEditor = (id: PlanetId) => {
+  const openEditor =(id: PlanetId) => {
     if (versionPending) return;
     returnFocusTo.current = id;
     measureSheet();
+    // Composición/Estilo vacíos: quedan punteados mientras se edita y hasta apretar «Listo»
+    setBaseEditing(id === 'composition' || id === 'style' ? (baseEmpty(id) ? id : null) : null);
     setOpenPlanet(id);
   };
-  const openCatalog = () => { if (versionPending) return; returnFocusTo.current = 'add'; setCatalogOpen(true); };
+  const openCatalog =() => { if (versionPending) return; returnFocusTo.current = 'add'; setCatalogOpen(true); };
 
   /* ── Operaciones sobre la canción ── */
   const patch = {
@@ -286,13 +299,25 @@ export function CreatorWizard() {
 
   const addFromCatalog = (id: PlanetId) => {
     setSong((s) => addPlanet(s, id));
+    // El elemento nuevo vuela desde el «+» al instante y queda punteado hasta que se completa con «Listo» (ahí se rellena)
+    setPendingPlanets((p) => (p.includes(id) ? p : [...p, id]));
+    setArrival(id);
     setCatalogOpen(false);
     returnFocusTo.current = id;
     measureSheet();
     setOpenPlanet(id);
   };
 
+  const confirmPlanet = () => {
+    if (openPlanet) {
+      setPendingPlanets((p) => p.filter((x) => x !== openPlanet));
+      if (openPlanet === 'composition' || openPlanet === 'style') setBaseConfirmed((c) => (c.includes(openPlanet) ? c : [...c, openPlanet]));
+    }
+    setOpenPlanet(null);
+  };
+
   const removeCurrent = (id: PlanetId) => {
+    setPendingPlanets((p) => p.filter((x) => x !== id));
     setSong((s) => removePlanet(s, id));
     setOpenPlanet(null);
     returnFocusTo.current = 'add';
@@ -303,6 +328,8 @@ export function CreatorWizard() {
   const restart = () => {
     if (recoveryActive) rec.end('DISMISSED'); // descartar la recuperación NO borra la generación fallida: sigue en el historial
     setNormalSong(emptySong);
+    setBaseConfirmed([]);
+    setPendingPlanets([]);
     setRestoredAt(null);
     clearDraft(browserStorage(), userId, NEW_DRAFT);
   };
@@ -734,7 +761,7 @@ export function CreatorWizard() {
         </div>
       )}
 
-      <SolarSystem song={song} caps={caps} issues={issues} onOpenPlanet={openEditor} onOpenCatalog={openCatalog} registerRef={registerRef} launching={launching} onLaunchEnd={() => setLaunching(false)} />
+      <SolarSystem song={song} caps={caps} issues={issues} onOpenPlanet={openEditor} onOpenCatalog={openCatalog} registerRef={registerRef} launching={launching} onLaunchEnd={() => setLaunching(false)} arrival={arrival} pending={[...pendingPlanets, ...basePending]} onArrivalEnd={() => setArrival(null)} />
       </div>
 
       {/* ── Revisión antes de generar ── */}
@@ -812,7 +839,7 @@ export function CreatorWizard() {
           <div className="mt-5 max-w-sm space-y-2">
             <Label htmlFor="song-project" className="text-xs font-medium text-muted-foreground">Guardar en un proyecto (opcional)</Label>
             <Select value={song.projectId} onValueChange={(v) => setSong((s) => ({ ...s, projectId: v }))}>
-              <SelectTrigger id="song-project" className="rounded-xl"><SelectValue placeholder="Sin proyecto" /></SelectTrigger>
+              <SelectTrigger id="song-project"><SelectValue placeholder="Sin proyecto" /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="none">Sin proyecto</SelectItem>
                 {(projects?.items ?? []).map((p) => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}
@@ -861,7 +888,19 @@ export function CreatorWizard() {
         >
           {current && (
             <>
-              <SheetHeader>
+              {/* El tacho de los editores de Crear (design-V2 · `.ehdr .ib.danger`): al lado de la ✕, fondo naranja */}
+              {!current.base && (
+                <button
+                  type="button"
+                  onClick={() => removeCurrent(current.id)}
+                  aria-label="Quitar de mi canción"
+                  title="Quitar de mi canción"
+                  className="absolute top-3 right-[4.5rem] flex size-11 items-center justify-center rounded-full border-[1.5px] border-primary bg-primary text-primary-foreground transition-colors hover:bg-primary/90 focus-visible:ring-[4px] focus-visible:ring-[var(--m-focus-ring)] focus:outline-hidden"
+                >
+                  <Trash2 className="size-[18px]" aria-hidden />
+                </button>
+              )}
+              <SheetHeader className={current.base ? undefined : 'pr-32'}>
                 <SheetTitle className="font-display text-xl">{current.label}</SheetTitle>
                 <SheetDescription>{current.blurb}</SheetDescription>
               </SheetHeader>
@@ -890,18 +929,13 @@ export function CreatorWizard() {
                   type="button"
                   size="lg"
                   className="-ml-4 h-14 w-[calc(100%+1rem)] max-w-none justify-between rounded-full rounded-l-none bg-voice py-0 pl-8 pr-0 font-display text-base font-bold text-on-voice hover:bg-voice/90 hover:text-on-voice"
-                  onClick={() => setOpenPlanet(null)}
+                  onClick={confirmPlanet}
                 >
                   <span>Listo</span>
                   <span aria-hidden className="-mr-px flex size-[58px] shrink-0 items-center justify-center rounded-full bg-gold text-on-gold">
                     <Check className="h-5 w-5" />
                   </span>
                 </Button>
-                {!current.base && (
-                  <Button type="button" variant="ghost" className="rounded-full text-destructive hover:text-destructive" onClick={() => removeCurrent(current.id)}>
-                    <Trash2 className="mr-2 h-4 w-4" aria-hidden /> Quitar de mi canción
-                  </Button>
-                )}
               </SheetFooter>
             </>
           )}

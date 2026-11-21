@@ -11,7 +11,7 @@ export const TRASH_TYPE_LABELS: Record<TrashType, string> = {
   lyrics: 'Letras',
   projects: 'Proyectos',
   songwriters: 'Letristas',
-  samples: 'Samples y voces',
+  samples: 'Audios y voces',
 };
 
 /** Cómo se nombra un elemento restaurado en el aviso («Canción restaurada»). */
@@ -28,7 +28,7 @@ export const TRASH_EMPTY: Record<TrashType, { title: string; description: string
   lyrics: { title: 'No hay letras en la Papelera.', description: 'Las letras que envíes a la Papelera aparecen acá y podés restaurarlas cuando quieras.' },
   projects: { title: 'No hay proyectos en la Papelera.', description: 'Los proyectos que envíes a la Papelera aparecen acá. Sus canciones nunca se mueven.' },
   songwriters: { title: 'No hay letristas en la Papelera.', description: 'Los letristas que envíes a la Papelera aparecen acá y vuelven con sus referencias.' },
-  samples: { title: 'No hay samples ni voces en la Papelera.', description: 'Lo que envíes a la Papelera aparece acá con su audio conservado.' },
+  samples: { title: 'No hay audios ni voces en la Papelera.', description: 'Lo que envíes a la Papelera aparece acá con su audio conservado.' },
 };
 
 /** Segunda parte de /library/trash[/tipo]; cualquier otra cosa cae en «songs». */

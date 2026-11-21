@@ -50,6 +50,7 @@ import {
   Flame,
   Mountain,
   PartyPopper,
+  Lightbulb,
   type LucideIcon,
 } from 'lucide-react';
 
@@ -990,45 +991,30 @@ export function LyricsStudio({
                   Podés traer una letra que ya escribiste y Melodya la prepara para tu canción.
                 </p>
 
-                <div className="grid w-full grid-cols-1 items-start gap-2 @md:grid-cols-3">
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    className="h-auto min-h-11 w-full min-w-0 flex-row justify-start gap-2 whitespace-nowrap rounded-full border border-border/70 bg-surface-2/40 p-1.5 pr-3 text-left text-sm font-bold leading-tight transition-colors hover:border-amber/40 hover:bg-surface-2 @md:text-sm"
-                    onClick={() => openImport()}
-                    disabled={generating}
-                  >
-                    <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-primary text-[#131C33]" aria-hidden><ClipboardPaste className="h-4 w-4" aria-hidden /></span>
-                    Pegar letra
-                  </Button>
-
+                {/* Como las opciones del bottom sheet «Traer una letra» de design-V2 (borde de 1,5 px, círculo de color, título y descripción), una al lado de otra en cualquier ancho:
+                    con poco lugar el círculo va arriba y el texto centrado debajo; desde `@md` pasa a fila */}
+                <div className="grid w-full grid-cols-3 items-start gap-2">
+                  <button type="button" className="flex h-20 w-full min-w-0 flex-col items-center justify-center gap-1.5 rounded-3xl border-[1.5px] border-border bg-[var(--m-input)] px-2 py-2 text-center transition-colors @md:h-14 @md:flex-row @md:justify-start @md:gap-3.5 @md:rounded-[40px] @md:py-2 @md:pr-4 @md:pl-2.5 @md:text-left hover:bg-foreground/5 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground disabled:pointer-events-none disabled:opacity-50" onClick={() => openImport()} disabled={generating}>
+                    <span aria-hidden className="flex size-7 shrink-0 items-center justify-center rounded-full text-[#131C33] @md:size-9" style={{ background: 'var(--m-accent)' }}><ClipboardPaste className="h-3.5 w-3.5 @md:h-4 @md:w-4" /></span>
+                    <span className="flex min-w-0 flex-col leading-tight @md:flex-1">
+                      <span className="font-display text-xs font-bold @md:text-sm">Pegar letra</span>
+                    </span>
+                  </button>
                   <div className="flex min-w-0 flex-col gap-1">
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      className="h-auto min-h-11 w-full min-w-0 flex-row justify-start gap-2 whitespace-nowrap rounded-full border border-border/70 bg-surface-2/40 p-1.5 pr-3 text-left text-sm font-bold leading-tight transition-colors hover:border-amber/40 hover:bg-surface-2 @md:text-sm"
-                      onClick={() => fileInputRef.current?.click()}
-                      disabled={generating}
-                    >
-                      <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-gold text-[#131C33]" aria-hidden><Upload className="h-4 w-4" aria-hidden /></span>
-                      Subir archivo
-                    </Button>
+                    <button type="button" className="flex h-20 w-full min-w-0 flex-col items-center justify-center gap-1.5 rounded-3xl border-[1.5px] border-border bg-[var(--m-input)] px-2 py-2 text-center transition-colors @md:h-14 @md:flex-row @md:justify-start @md:gap-3.5 @md:rounded-[40px] @md:py-2 @md:pr-4 @md:pl-2.5 @md:text-left hover:bg-foreground/5 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground disabled:pointer-events-none disabled:opacity-50" onClick={() => fileInputRef.current?.click()} disabled={generating}>
+                      <span aria-hidden className="flex size-7 shrink-0 items-center justify-center rounded-full text-[#131C33] @md:size-9" style={{ background: '#7B93E8' }}><Upload className="h-3.5 w-3.5 @md:h-4 @md:w-4" /></span>
+                      <span className="flex min-w-0 flex-col leading-tight @md:flex-1">
+                        <span className="font-display text-xs font-bold @md:text-sm">Subir archivo</span>
+                      </span>
+                    </button>
                     <p className="text-center text-[10px] text-muted-foreground">Archivos .txt o .md.</p>
                   </div>
-
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    className="h-auto min-h-11 w-full min-w-0 flex-row justify-start gap-2 whitespace-nowrap rounded-full border border-border/70 bg-surface-2/40 p-1.5 pr-3 text-left text-sm font-bold leading-tight transition-colors hover:border-amber/40 hover:bg-surface-2 @md:text-sm"
-                    onClick={() => setView('saved')}
-                    disabled={generating}
-                  >
-                    <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-voice text-on-voice" aria-hidden><BookOpen className="h-4 w-4" aria-hidden /></span>
-                    Mis letras
-                  </Button>
+                  <button type="button" className="flex h-20 w-full min-w-0 flex-col items-center justify-center gap-1.5 rounded-3xl border-[1.5px] border-border bg-[var(--m-input)] px-2 py-2 text-center transition-colors @md:h-14 @md:flex-row @md:justify-start @md:gap-3.5 @md:rounded-[40px] @md:py-2 @md:pr-4 @md:pl-2.5 @md:text-left hover:bg-foreground/5 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground disabled:pointer-events-none disabled:opacity-50" onClick={() => setView('saved')} disabled={generating}>
+                    <span aria-hidden className="flex size-7 shrink-0 items-center justify-center rounded-full text-[#131C33] @md:size-9" style={{ background: 'var(--m-gold)' }}><BookOpen className="h-3.5 w-3.5 @md:h-4 @md:w-4" /></span>
+                    <span className="flex min-w-0 flex-col leading-tight @md:flex-1">
+                      <span className="font-display text-xs font-bold @md:text-sm">Mis letras</span>
+                    </span>
+                  </button>
 
                   <input
                     ref={fileInputRef}
@@ -1072,7 +1058,7 @@ export function LyricsStudio({
                     const active = style.split(',').some((x) => x.trim().toLowerCase() === g.toLowerCase());
                     const Icon = STYLE_ICONS[g];
                     return (
-                      <Chip key={g} active={active} className="px-2.5 py-1 text-[11px]" onClick={() => toggleStyleChip(g)}>
+                      <Chip key={g} active={active} onClick={() => toggleStyleChip(g)}>
                         {active && Icon && <Icon className="h-3.5 w-3.5 shrink-0" aria-hidden />}
                         {g}
                       </Chip>
@@ -1084,32 +1070,30 @@ export function LyricsStudio({
               {/* Duración ------------------------------------------------ */}
 
               <div className="@container space-y-2">
-                <Label className="text-sm font-medium">
-                  Duración <span className="text-muted-foreground">(opcional)</span>
+                <Label className="text-sm leading-[1.3] font-bold">
+                  Duración <span className="ml-1 font-normal text-muted-foreground">(opcional)</span>
                 </Label>
 
-                {/* Medios círculos como los de «Energía» (design-V2, configuracion-estilo): base redondeada, sin borde arriba, el tamaño crece de corta a larga */}
-                <div className="flex items-start justify-center gap-2 @sm:gap-4" role="radiogroup" aria-label="Duración">
-                  {DURATIONS.map((d, n) => {
-                    const w = 96 + n * 8; // ancho máximo; se achica en proporción si no hay lugar
+                {/* Selector de grupo como el de «Duración» de las opciones de design-V2 (`.seg.dur-seg`): una sola cápsula con borde de 1,5 px y 4 px de relleno; cada opción
+                    es una píldora de al menos 44 px con el nombre arriba y la duración aproximada abajo (12 px, atenuada); la elegida va en `--m-selected` y negrita */}
+                <div className="flex gap-0.5 rounded-full border-[1.5px] border-line p-1" role="radiogroup" aria-label="Duración">
+                  {DURATIONS.map((d) => {
                     const active = duration === d.id;
                     return (
-                      <div key={d.id} className="flex min-w-0 flex-col items-center gap-1.5" style={{ flex: '1 1 0', maxWidth: w }}>
-                        <button
-                          type="button"
-                          role="radio"
-                          aria-checked={active}
-                          onClick={() => setDuration(duration === d.id ? '' : d.id)}
-                          style={{ aspectRatio: '2 / 1', borderRadius: '0 0 50% 50% / 0 0 100% 100%', paddingBottom: '7%' }}
-                          className={cn(
-                            'flex w-full flex-col items-center justify-end leading-tight border-[1.5px] border-t-0 text-[11px] transition-colors @sm:text-[12.5px] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground',
-                            active ? 'border-primary bg-primary font-bold text-[#131C33]' : 'border-foreground/50 font-medium text-foreground hover:bg-foreground/10'
-                          )}
-                        >
-                          {d.label}
-                          <span className={cn('text-[9.5px] font-normal @sm:text-[10.5px]', active ? 'text-[#131C33]/80' : 'text-muted-foreground')}>{d.hint}</span>
-                        </button>
-                      </div>
+                      <button
+                        key={d.id}
+                        type="button"
+                        role="radio"
+                        aria-checked={active}
+                        onClick={() => setDuration(duration === d.id ? '' : d.id)}
+                        className={cn(
+                          'flex min-h-11 min-w-0 flex-1 flex-col items-center justify-center gap-0 rounded-full px-2.5 py-1 text-sm leading-[1.2] whitespace-nowrap transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground',
+                          active ? 'bg-selected font-bold text-on-selected' : 'font-medium text-foreground hover:bg-foreground/10'
+                        )}
+                      >
+                        {d.label}
+                        <span className={cn('text-xs leading-[1.2] font-medium', active ? 'opacity-90' : 'opacity-75')}>{d.hint}</span>
+                      </button>
                     );
                   })}
                 </div>
@@ -1120,10 +1104,10 @@ export function LyricsStudio({
               <div className="@container space-y-2">
                 <div className="grid grid-cols-1 gap-3 @sm:grid-cols-3">
                   <div className="min-w-0 space-y-2">
-                    <Label className="text-sm font-medium">Estructura</Label>
+                    <Label className="text-sm leading-[1.3] font-bold">Estructura</Label>
 
                     <Select value={structure} onValueChange={setStructure}>
-                      <SelectTrigger className="w-full min-w-0 rounded-xl text-sm" aria-label="Estructura">
+                      <SelectTrigger className="w-full min-w-0" aria-label="Estructura">
                         <SelectValue />
                       </SelectTrigger>
 
@@ -1138,10 +1122,10 @@ export function LyricsStudio({
                   </div>
 
                   <div className="min-w-0 space-y-2">
-                    <Label className="text-sm font-medium">Idioma</Label>
+                    <Label className="text-sm leading-[1.3] font-bold">Idioma</Label>
 
                     <Select value={language} onValueChange={setLanguage}>
-                      <SelectTrigger className="w-full min-w-0 rounded-xl text-sm" aria-label="Idioma">
+                      <SelectTrigger className="w-full min-w-0" aria-label="Idioma">
                         <SelectValue />
                       </SelectTrigger>
 
@@ -1156,10 +1140,10 @@ export function LyricsStudio({
                   </div>
 
                   <div className="min-w-0 space-y-2">
-                    <Label className="text-sm font-medium">Letrista</Label>
+                    <Label className="text-sm leading-[1.3] font-bold">Letrista</Label>
 
                     <Select value={personaId} onValueChange={setPersonaId}>
-                      <SelectTrigger className="w-full min-w-0 rounded-xl text-sm" aria-label="Letrista">
+                      <SelectTrigger className="w-full min-w-0" aria-label="Letrista">
                         <SelectValue />
                       </SelectTrigger>
 
@@ -1176,7 +1160,7 @@ export function LyricsStudio({
                   </div>
                 </div>
 
-                <p className="text-[11px] text-muted-foreground">
+                <p className="text-[13px] leading-[1.35] text-muted-foreground">
                   {STRUCTURE_PRESETS.find((p) => p.id === structure)?.description}
                 </p>
               </div>
@@ -1357,11 +1341,11 @@ export function LyricsStudio({
                 <>
                   {/* Título ------------------------------------------------ */}
 
-                  <div className="mb-3 flex items-center gap-2">
+                  <div className="mb-2 flex items-center gap-2">
                     <Input
                       value={editing.title}
                       onChange={(e) => setEditing({ ...editing, title: e.target.value })}
-                      className="h-12 flex-1 rounded-xl border-transparent bg-transparent px-0 font-display text-2xl font-bold focus-visible:bg-surface-2 sm:text-3xl"
+                      className="h-11 flex-1 rounded-xl border-transparent bg-transparent px-0 font-display text-2xl font-bold focus-visible:bg-surface-2 sm:text-3xl"
                       aria-label="Título de la letra"
                     />
 
@@ -1382,7 +1366,7 @@ export function LyricsStudio({
 
                   {/* Estructura detectada --------------------------------- */}
 
-                  <div className="mb-5 shrink-0">
+                  <div className="mb-3 shrink-0">
                     <div className="flex items-center gap-2.5">
                       <span aria-hidden className="flex size-8 shrink-0 items-center justify-center rounded-full bg-primary text-[#131C33]">
                         <ListMusic className="h-4 w-4" />
@@ -1391,7 +1375,7 @@ export function LyricsStudio({
                       <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
                         <p className="text-sm font-bold">Estructura detectada</p>
 
-                        <span className="text-[11px] text-muted-foreground">
+                        <span className="text-sm text-muted-foreground">
                           {detectedSections.length}{' '}
                           {detectedSections.length === 1 ? 'sección' : 'secciones'}
                         </span>
@@ -1402,9 +1386,14 @@ export function LyricsStudio({
                     {uniqueDetectedSections.length > 0 ? (
                       <div className="mt-2 flex flex-wrap gap-1.5">
                         {uniqueDetectedSections.map((tag) => (
-                          <Chip key={tag} className="px-3.5 py-1.5 text-[11px]">
+                          /* Como los de «Estructura detectada» de design-V2 (`.stags .hlsec`), un poco más chicos: 32 px de alto, borde de 1,5 px y texto en el dorado de las etiquetas de sección,
+                             en mayúsculas, 11 px, negrita y con 0,1 em de espaciado */
+                          <span
+                            key={tag}
+                            className="inline-flex h-8 items-center rounded-full border-[1.5px] border-lyric-tag px-3 text-[11px] leading-none font-bold tracking-[0.1em] whitespace-nowrap text-lyric-tag uppercase"
+                          >
                             {tag}
-                          </Chip>
+                          </span>
                         ))}
                       </div>
                     ) : (
@@ -1444,7 +1433,7 @@ El estribillo que queremos recordar...`}
 
                   {/* Ajustar con Melodya --------------------------------- */}
 
-                  <div className="mt-6 shrink-0 space-y-2">
+                  <div className="mt-4 shrink-0 space-y-1.5">
                     <div className="flex items-center gap-2.5">
                       <span aria-hidden className="flex size-8 shrink-0 items-center justify-center rounded-full bg-primary text-[#131C33]">
                         <Wand2 className="h-4 w-4" />
@@ -1452,11 +1441,12 @@ El estribillo que queremos recordar...`}
                       <p className="text-sm font-bold">Ajustar con Melodya</p>
                     </div>
 
-                    <div className="flex flex-wrap gap-1.5">
+                    {/* Una sola fila: los chips se reparten todo el ancho disponible (crecen para llenarlo) y, si no entran, se desplaza hacia el costado, sin cortar ninguna palabra */}
+                    <div className="scrollbar-none -mx-1 flex flex-nowrap gap-1.5 overflow-x-auto px-1 pb-0.5">
                       {REFINE_ACTIONS.map((a) => (
                         <Chip
                           key={a.label}
-                          className="px-2.5 py-1 text-[11px]"
+                          className="h-9 flex-1 justify-center px-3 text-[13px]"
                           onClick={() => improveLyrics(a.instruction)}
                         >
                           {a.label}
@@ -1500,25 +1490,24 @@ El estribillo que queremos recordar...`}
 
                   {/* Guía de etiquetas ----------------------------------- */}
 
-                  <details className="group studio-cap mt-6 shrink-0 overflow-hidden rounded-r-[36px] bg-voice text-on-voice shadow-lg">
-                    <summary className="flex min-h-[72px] cursor-pointer list-none items-center justify-between gap-3 py-3 pr-6 pl-5 text-sm font-bold sm:pl-7">
-                      <span className="flex items-center gap-2.5">
-                        <span aria-hidden className="flex size-8 shrink-0 items-center justify-center rounded-full bg-primary text-[#131C33]">
-                          <Sparkles className="h-4 w-4" />
-                        </span>
-                        Guía de estructura
+                  <details className="group studio-cap mt-4 shrink-0 overflow-hidden rounded-r-[36px] bg-[var(--m-capsule-tint)] text-foreground">
+                    {/* Cápsula «Guía de estructura» de design-V2 (`.cap-opt.compact.tint.guidecap`): círculo de 44 px con el «+» en el color del planeta Estilo,
+                        título y descripción en dos líneas, y a la derecha el círculo dorado de 32 px (acá con la flecha que gira al abrir) */}
+                    <summary className="flex min-h-16 cursor-pointer list-none items-center gap-3.5 py-2 pr-5 pl-5 sm:pl-7">
+                      <span aria-hidden className="flex size-11 shrink-0 items-center justify-center rounded-full bg-[#D2A692] text-[#131C33] dark:bg-[#E0B8A9]">
+                        <Plus className="h-[22px] w-[22px]" />
                       </span>
-
-                      <span className="flex items-center gap-2">
-                        <span className="text-[10px] font-normal text-on-voice/70">Insertar etiquetas</span>
-                        <span aria-hidden className="flex size-8 shrink-0 items-center justify-center rounded-full bg-gold text-[#131C33]">
-                          <ChevronDown className="h-4 w-4 transition-transform duration-200 group-open:rotate-180" />
-                        </span>
+                      <span className="flex min-w-0 flex-1 flex-col">
+                        <span className="font-display text-base leading-[1.2] font-bold">Guía de estructura</span>
+                        <span className="text-[13px] leading-[1.35] text-muted-foreground">Insertar etiquetas</span>
+                      </span>
+                      <span aria-hidden className="flex size-8 shrink-0 items-center justify-center rounded-full bg-gold text-on-gold">
+                        <ChevronDown className="h-4 w-4 transition-transform duration-200 group-open:rotate-180" />
                       </span>
                     </summary>
 
                     <div className="pb-4 pr-6 pl-5 sm:pl-7">
-                      <p className="mb-3 text-[11px] leading-relaxed text-on-voice/80">
+                      <p className="mb-3 text-[13px] leading-[1.35] text-muted-foreground">
                         Elegí una etiqueta para insertarla en la posición actual del cursor. También
                         podés escribirlas manualmente.
                       </p>
@@ -1532,23 +1521,25 @@ El estribillo que queremos recordar...`}
                               key={item.base}
                               active={active}
                               onClick={() => insertLyricsTag(item)}
-                              className={cn('min-h-0 px-3.5 py-1.5 text-[11px]', !active && 'border-on-voice/30 text-on-voice hover:bg-on-voice/10')}
+                              className="h-8 px-3 text-xs"
                             >
-                              <Plus className="h-3 w-3" aria-hidden />[{item.base}]
+                              {active && <Plus className="h-3 w-3" aria-hidden />}[{item.base}]
                             </Chip>
                           );
                         })}
                       </div>
 
-                      <div className="mt-3">
-                        <p className="text-[11px] leading-relaxed text-gold">
-                          <span className="font-bold">Consejo:</span> usá{' '}
-                          <span className="font-mono text-on-voice">[Verso]</span> para los
-                          versos, <span className="font-mono text-on-voice">[Coro]</span> para el
-                          estribillo y <span className="font-mono text-on-voice">[Puente]</span>{' '}
-                          para una parte de contraste. También podés sumar una pista, por ejemplo{' '}
-                          <span className="font-mono text-on-voice">[Intro - guitarras]</span>.
-                        </p>
+                      {/* «Consejo» como en la guía de estructura de design-V2 (`.lcard.consent` + `.guide-tip`): tarjeta de 24 px de radio, con un velo del color de texto al 6 % sobre la cápsula (se adapta a su tinte en claro y oscuro), y con el foco en un círculo de 32 px
+                          en el dorado de las etiquetas, y «Consejo:» en negrita seguido del texto en 14 px secundario, con las etiquetas de ejemplo en monoespaciada dorada */}
+                      <div className="mt-3 rounded-3xl border-[1.5px] border-border bg-[color-mix(in_srgb,var(--m-foreground)_6%,transparent)] px-[18px] py-4">
+                        <div className="flex items-start gap-3">
+                          <span aria-hidden className="flex size-8 shrink-0 items-center justify-center rounded-full bg-[color-mix(in_srgb,var(--m-lyric-section-tag)_22%,transparent)] text-lyric-tag">
+                            <Lightbulb className="h-[18px] w-[18px]" />
+                          </span>
+                          <p className="min-w-0 flex-1 text-sm leading-[1.45] text-muted-foreground">
+                            <b className="font-bold text-foreground">Consejo:</b> usá <code className="font-mono text-[0.95em] font-bold text-lyric-tag">[Verso]</code> para los versos, <code className="font-mono text-[0.95em] font-bold text-lyric-tag">[Coro]</code> para el estribillo y <code className="font-mono text-[0.95em] font-bold text-lyric-tag">[Puente]</code> para una parte de contraste. También podés sumar una pista, por ejemplo <code className="font-mono text-[0.95em] font-bold text-lyric-tag">[Intro - guitarras]</code>.
+                          </p>
+                        </div>
                       </div>
                     </div>
                   </details>
@@ -1565,7 +1556,7 @@ El estribillo que queremos recordar...`}
                         type="button"
                         variant="ghost"
                         size="sm"
-                        className="h-11 rounded-full px-4 text-sm font-semibold text-foreground"
+                        className="h-10 rounded-full px-4 text-sm font-semibold text-foreground"
                         onClick={() => void copyLyrics()}
                       >
                         <Copy className="mr-2 h-4 w-4" aria-hidden />
@@ -1576,7 +1567,7 @@ El estribillo que queremos recordar...`}
                         type="button"
                         variant="ghost"
                         size="sm"
-                        className="h-11 rounded-full px-4 text-sm font-semibold text-foreground"
+                        className="h-10 rounded-full px-4 text-sm font-semibold text-foreground"
                         onClick={clearEditor}
                       >
                         <Eraser className="mr-2 h-4 w-4" aria-hidden />
@@ -1587,7 +1578,7 @@ El estribillo que queremos recordar...`}
                         type="button"
                         variant="ghost"
                         size="sm"
-                        className="h-11 rounded-full px-4 text-sm font-semibold text-foreground"
+                        className="h-10 rounded-full px-4 text-sm font-semibold text-foreground"
                         onClick={() => improveLyrics()}
                         disabled={generating || lyricsAiLocked || !editing.lyrics.trim()}
                       >
@@ -1600,7 +1591,7 @@ El estribillo que queremos recordar...`}
                           type="button"
                           variant="ghost"
                           size="sm"
-                          className="h-11 rounded-full px-4 text-sm font-semibold text-foreground"
+                          className="h-10 rounded-full px-4 text-sm font-semibold text-foreground"
                           onClick={undo}
                           title="Volver a la versión anterior"
                         >
@@ -1626,7 +1617,7 @@ El estribillo que queremos recordar...`}
 
                   {/* Acciones ------------------------------------------------ */}
 
-                  <div className="mt-3 flex flex-wrap items-center justify-end gap-2.5">
+                  <div className="mt-2 flex flex-wrap items-center justify-center gap-2.5">
                     <Button
                       type="button"
                       variant="outline"

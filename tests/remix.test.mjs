@@ -371,7 +371,7 @@ test('contador de remixes: junto a los demás contadores, con el ícono de Remix
   const row = detail.slice(detail.indexOf('{/* stats (solo si hay interacción o es pública) */}'), detail.indexOf('{/* Reproducir como en «Canción destacada»'));
   // mismo contenedor, mismas clases y mismo orden (después de comentarios)
   assert.ok(row.indexOf('<MessageCircle') < row.indexOf('data-testid="remix-count"'));
-  assert.match(row, /<span className="inline-flex items-center gap-1\.5" title="Remixes" aria-label=\{`\$\{song\.remixCount\} \$\{song\.remixCount === 1 \? 'remix' : 'remixes'\}`\} data-testid="remix-count">\s*<RemixIcon className="h-3\.5 w-3\.5" aria-hidden \/>\s*\{formatNumber\(song\.remixCount\)\}/);
+  assert.match(row, /<span className="inline-flex items-center gap-1\.5" title="Remixes" aria-label=\{`\$\{song\.remixCount\} \$\{song\.remixCount === 1 \? 'remix' : 'remixes'\}`\} data-testid="remix-count">\s*<RemixIcon className="h-\[17px\] w-\[17px\]" aria-hidden \/>\s*\{formatNumber\(song\.remixCount\)\}/);
   // número real: solo si el backend lo informa; sin estado local ni valores inventados
   assert.match(row, /typeof song\.remixCount === 'number' && \(/);
   assert.equal(/useState|setRemixCount/.test(row), false, 'sin contador local');
@@ -437,11 +437,11 @@ test('menús: Remix en detalle, Comunidad y Biblioteca; «Otra versión» queda 
 test('allowRemix: interruptor «Permitir Remixes» del dueño, sin leyenda, alineado con el de comentarios; los remixes existentes se conservan', () => {
   const detail = read('src/features/song/SongDetailView.tsx');
   assert.match(detail, /aria-label="Permitir Remixes"/);
-  assert.match(detail, /Permitir Remixes\n\s*<\/label>/);
+  assert.match(detail, /<b className="text-\[15px\] font-bold">Permitir Remixes<\/b>[\s\S]*?aria-label="Permitir Remixes"/);
   assert.equal(/Permití que otras personas creen nuevas canciones/.test(detail), false, 'sin la leyenda larga');
   assert.equal(detail.includes('allow-remix-help') || detail.includes('ALLOW_REMIX_TEXT'), false);
-  // los dos interruptores comparten columna alineada a la izquierda (el grupo sigue a la derecha de la sección)
-  assert.match(detail, /<div className="flex flex-col items-start gap-2">\s*<label[^>]*>\s*<Switch[\s\S]*?Permitir comentarios[\s\S]*?Permitir Remixes/);
+  // los interruptores viven en el contenedor «Publicación» (visibilidad, comentarios y remixes), debajo de las versiones
+  assert.match(detail, /aria-label="Publicación"[\s\S]*?Visibilidad pública[\s\S]*?Permitir comentarios[\s\S]*?Permitir Remixes/);
   assert.match(detail, /checked=\{song\.allowRemix === true\}/);
   assert.match(detail, /onCheckedChange=\{\(val\) => visibilityMutation\.mutate\(\{ allowRemix: val \}\)\}/);
   assert.match(detail, /Los remixes que ya existen se conservan\./);

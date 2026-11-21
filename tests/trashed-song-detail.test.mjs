@@ -132,8 +132,8 @@ test('reproducción en la Papelera: la pista usa descarga autenticada (isPublic 
   const detail = read('src/features/song/SongDetailView.tsx');
   assert.match(detail, /isPublic: access\.showCommunity,/);
   assert.match(detail, /trashed: isTrashed \|\| undefined/);
-  // «Reproducir a continuación / cola» solo existe en la sección de Comunidad, que no se muestra en la Papelera.
-  assert.match(detail, /\{access\.showCommunity && \(\s*<section className="space-y-4" aria-label="Autor y reacciones">[\s\S]*onQueue\('next'\)/);
+  // «Reproducir a continuación / cola» solo se muestra con la sección de Comunidad, que no existe en la Papelera.
+  assert.match(detail, /const queueButtons = access\.showCommunity && currentVersion\?\.audioUrl \?[\s\S]*onQueue\('next'\)/);
 });
 
 test('el reproductor expandido oculta Compartir (no lo deshabilita) y bloquea la descarga en la Papelera', () => {

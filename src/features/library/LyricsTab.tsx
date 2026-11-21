@@ -23,7 +23,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { cn } from '@/lib/utils';
 import { usePlanGate } from '@/hooks/use-plan-gate';
 import { LOCKED_CONTROL, RequiredPlanBadge } from '@/components/common/PlanGate';
-import { ConfirmDialog, Field, LIST_MENU_COMFORTABLE_MOBILE, LyricBody, TabCtaButton, ViewToggle, parseTagList, useViewMode } from './library-utils';
+import { ConfirmDialog, EyeSolid, Field, LIST_MENU_COMFORTABLE_MOBILE, LyricBody, PencilSolid, TabCtaButton, TrashSolid, ViewToggle, parseTagList, useViewMode } from './library-utils';
 
 type SourceFilter = 'all' | 'MANUAL' | 'AI_GENERATED';
 
@@ -238,39 +238,83 @@ export function LyricsTab() {
         <ul className={cn(list ? 'flex flex-col gap-2' : 'grid gap-3 sm:grid-cols-2 xl:grid-cols-3')}>
           {lyrics.map((lyric) => (
             <li key={lyric.id}>
+              {/* design-V2 › Biblioteca › Letras: tarjeta con ícono circular (con destello dorado si la escribió Melodya),
+                  título, origen · fecha, géneros/etiquetas en píldoras y vista previa de una línea. */}
               <article
                 className={cn(
-                  'group relative flex h-full flex-col overflow-hidden rounded-cover border border-border/70 bg-surface p-4 transition-colors hover:border-amber/40',
-                  list && 'p-3 sm:flex-row sm:items-center sm:gap-4 sm:pr-28'
+                  'group relative flex h-full gap-3.5 overflow-hidden rounded-cover border border-[var(--m-border)] bg-[var(--m-input)] p-4 pr-12 transition-colors hover:border-amber/40',
+                  list && 'items-center py-3 sm:pr-3'
                 )}
               >
-                <button
-                  type="button"
-                  onClick={() => setViewing(lyric)}
-                  className={cn('block w-full cursor-pointer text-left focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber', list && 'sm:min-w-0 sm:flex-1')}
-                  aria-label={`Ver letra ${lyric.title}`}
-                >
-                  {/* Origen («Mía» / «Con Melodya») arriba del título, en grilla y en lista */}
-                  <div className={cn('-ml-4 mb-1.5 pr-28', list && '-ml-3')}>
-                    <SourceBadge source={lyric.source} edge />
-                  </div>
-                  <h3 className="text-wrap! font-semibold leading-tight text-foreground">{lyric.title}</h3>
-                  <p className={cn('mt-2 line-clamp-2 min-h-10 text-sm leading-snug whitespace-pre-line text-muted-foreground', list && 'min-h-0 line-clamp-1')}>
-                    {lyric.lyrics.replace(/\[.*?\]/g, '').trim()}
-                  </p>
-                </button>
-                <div className={cn('mt-3 flex flex-wrap items-center gap-1.5', list && 'mt-2 sm:mt-0 sm:w-[24rem] sm:shrink-0 sm:flex-nowrap sm:overflow-hidden xl:w-[28rem]')}>
-                  {lyric.genre && <Chip className={cn('px-2 py-0.5', list && 'min-w-0 max-w-28 overflow-hidden whitespace-nowrap')}>{lyric.genre}</Chip>}
-                  {lyric.tags.slice(0, 3).map((tag) => (
-                    <Chip key={tag} className={cn('px-2 py-0.5', list && 'min-w-0 max-w-28 overflow-hidden whitespace-nowrap')}>
-                      {tag}
-                    </Chip>
-                  ))}
+                <span aria-hidden className="relative flex size-12 shrink-0 items-center justify-center self-start rounded-full bg-primary text-[#131C33]">
+                  {/* Íconos exactos del diseño V2: «notes» (tres líneas) y el destello de Melodya */}
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M15 18H3" />
+                    <path d="M17 6H3" />
+                    <path d="M21 12H3" />
+                  </svg>
+                  {lyric.source === 'AI_GENERATED' && (
+                    <span className="absolute -top-1 -right-1 flex size-[22px] items-center justify-center rounded-full bg-gold text-[#131C33] ring-[2.5px] ring-[var(--m-input)]">
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M12 1.5c.6 4.8 2.7 7.6 10.5 10.5-7.8 2.9-9.9 5.7-10.5 10.5-.6-4.8-2.7-7.6-10.5-10.5C9.3 9.1 11.4 6.3 12 1.5z" />
+                      </svg>
+                    </span>
+                  )}
+                </span>
+                <div className={'flex min-w-0 flex-1 flex-col gap-1.5'}>
+                  <button
+                    type="button"
+                    onClick={() => setViewing(lyric)}
+                    className={'block w-full min-w-0 cursor-pointer text-left focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber'}
+                    aria-label={`Ver letra ${lyric.title}`}
+                  >
+                    <h3 className="line-clamp-2 text-wrap! font-display text-lg font-bold leading-[1.2] text-foreground">{lyric.title}</h3>
+                    {/* Origen («Escrita por vos» / «Con Melodya») · fecha */}
+                    <p className="mt-1 flex flex-wrap items-center gap-x-2 text-[13px] leading-[1.35] text-muted-foreground">
+                      <span className="font-semibold text-label">{lyric.source === 'MANUAL' ? 'Escrita por vos' : 'Con Melodya'}</span>
+                      <span aria-hidden>·</span>
+                      <span className="whitespace-nowrap">{formatRelative(lyric.updatedAt)}</span>
+                    </p>
+                    <p className={cn('mt-2 line-clamp-2 min-h-[2.5em] text-[13px] leading-tight whitespace-pre-line text-muted-foreground', list && 'hidden')}>
+                      {lyric.lyrics.replace(/\[.*?\]/g, '').trim()}
+                    </p>
+                  </button>
+                  {(lyric.genre || lyric.tags.length > 0) && (
+                    <div className={'flex flex-wrap items-center gap-1.5'}>
+                      {lyric.genre && (
+                        <span className="inline-flex items-center rounded-full border border-muted-foreground px-[9px] py-[3px] text-xs leading-none font-medium text-foreground">{lyric.genre}</span>
+                      )}
+                      {lyric.tags.slice(0, 3).map((tag) => (
+                        <span key={tag} className="inline-flex items-center rounded-full border border-lyric-tag px-[9px] py-[3px] text-xs leading-none font-medium text-lyric-tag">
+                          {tag}
+                        </span>
+                      ))}
+                    </div>
+                  )}
                 </div>
 
-                {/* Fecha + menú de opciones: extremo derecho, arriba de todo, centrados con la cápsula de origen */}
-                <div className={cn('absolute top-3.5 right-3 flex h-8 items-center gap-1', list && 'top-2.5')}>
-                  <span className="text-xs whitespace-nowrap text-muted-foreground">{formatRelative(lyric.updatedAt)}</span>
+                {/* Vista lista (≥ sm): las tres acciones a la vista. Grilla y mobile: menú de opciones arriba a la derecha. */}
+                {list && (
+                  <div className="flex shrink-0 items-center gap-3 self-center max-sm:hidden">
+                    {[
+                      { key: 'view', label: 'Ver completa', Icon: EyeSolid, onClick: () => setViewing(lyric) },
+                      { key: 'edit', label: 'Editar', Icon: PencilSolid, onClick: () => setEditing(lyric) },
+                      { key: 'delete', label: 'Enviar a la Papelera', Icon: TrashSolid, onClick: () => setToDelete(lyric) },
+                    ].map(({ key, label, Icon, onClick }) => (
+                      <button
+                        key={key}
+                        type="button"
+                        onClick={onClick}
+                        title={label}
+                        aria-label={`${label}: ${lyric.title}`}
+                        className="flex size-9 shrink-0 cursor-pointer items-center justify-center rounded-full border-[1.5px] border-foreground text-foreground transition-colors hover:bg-foreground/10 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground"
+                      >
+                        <Icon className="h-[18px] w-[18px]" aria-hidden />
+                      </button>
+                    ))}
+                  </div>
+                )}
+                <div className={cn('absolute top-3 right-3 flex h-8 items-center gap-1', list && 'sm:hidden')}>
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
                     <button
@@ -325,7 +369,7 @@ export function LyricsTab() {
             <DialogTitle className="font-display text-left">{viewing?.title}</DialogTitle>
             <DialogDescription className="flex flex-wrap items-center gap-2 text-left">
               {viewing && <SourceBadge source={viewing.source} />}
-              {viewing?.genre && <Chip className="px-2 py-0.5">{viewing.genre}</Chip>}
+              {viewing?.genre && <Chip>{viewing.genre}</Chip>}
               {viewing && <span className="text-xs">{formatRelative(viewing.updatedAt)}</span>}
             </DialogDescription>
           </DialogHeader>

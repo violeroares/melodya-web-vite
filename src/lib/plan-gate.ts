@@ -23,7 +23,7 @@ export interface CatalogPlanLike {
 export const FEATURE_NAME: Record<string, string> = {
   LYRICS_AI: 'El Asistente de Melodya',
   LYRIC_PERSONAS: 'Los letristas personalizados',
-  AUDIO_REFERENCE: 'La referencia de audio',
+  AUDIO_REFERENCE: 'El planeta Audio',
   PRODUCTION_CONTROLS: 'El planeta Producción',
   CREATIVITY_SETTINGS: 'El planeta Creatividad',
   VOICE_CLONING: 'Clonar tu voz',

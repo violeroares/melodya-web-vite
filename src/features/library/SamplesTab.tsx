@@ -8,7 +8,7 @@
  */
 import React, { useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { AudioLines, MoreVertical, Pencil, Plus, Trash2, Upload } from 'lucide-react';
+import { AudioLines, Drum, Guitar, Mic, Mic2, MoreVertical, Music, Music2, Pencil, Plus, Trash2, Upload } from 'lucide-react';
 import { profileApi, samplesApi } from '@/lib/api';
 import { ApiError, apiFileUrl } from '@/lib/api/client';
 import { toUserMessage } from '@/lib/errors';
@@ -29,7 +29,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { ConfirmDialog, Field, LIST_MENU_COMFORTABLE_MOBILE, SamplePlayButton, TabCtaButton, ViewToggle, useViewMode } from './library-utils';
+import { ConfirmDialog, Field, LIST_MENU_COMFORTABLE_MOBILE, PencilSolid, SamplePlayButton, TabCtaButton, TrashSolid, ViewToggle, useViewMode } from './library-utils';
 
 type KindFilter = 'ALL' | 'VOICE' | 'INSTRUMENT';
 
@@ -93,6 +93,22 @@ function VoiceConsentCard({ id, checked, onCheckedChange }: { id: string; checke
   );
 }
 
+/* Ícono circular del audio (design-V2 › Biblioteca › Audios): voz en naranja, instrumentos en azul; el ícono sale del tipo. */
+const SAMPLE_ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
+  VOICE: Mic, BEATBOX: Mic2, GUITAR: Guitar, BASS: Guitar, DRUMS: Drum, MELODY: Music2, INSTRUMENT: Music, OTHER: AudioLines,
+};
+/** Los nombres autogenerados traen la fecha pegada («Mi voz · 19 nov»): ya se muestra debajo, así que en el título se omite (el nombre guardado no cambia). */
+const displayName = (name: string) => name.replace(/s*·s*d{1,2}s+[a-záéíóúñ]{3,}.?(s+d{4})?s*$/i, '').trim() || name;
+
+function SampleTile({ type, kind, className }: { type: string; kind: string; className?: string }) {
+  const Icon = SAMPLE_ICONS[type] ?? AudioLines;
+  return (
+    <span aria-hidden className={cn('flex size-12 shrink-0 items-center justify-center rounded-full text-[#131C33]', kind === 'VOICE' ? 'bg-[#F0A44B]' : 'bg-element-sound', className)}>
+      <Icon className="h-[22px] w-[22px]" />
+    </span>
+  );
+}
+
 export function SamplesTab() {
   const [view, setView] = useViewMode('melodya:samples-view');
   const list = view === 'list';
@@ -116,27 +132,27 @@ export function SamplesTab() {
     mutationFn: (id: string) => samplesApi.remove(id),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ['samples'] });
-      toast({ title: 'Sample enviado a la Papelera', description: 'Lo restaurás desde Biblioteca › Papelera.' });
+      toast({ title: 'Audio enviado a la Papelera', description: 'Lo restaurás desde Biblioteca › Papelera.' });
       setToDelete(null);
     },
-    onError: (err) => toast({ title: 'No pudimos eliminar el sample', description: toUserMessage(err), variant: 'destructive' }),
+    onError: (err) => toast({ title: 'No pudimos eliminar el audio', description: toUserMessage(err), variant: 'destructive' }),
   });
 
   return (
-    <section aria-label="Tus samples">
+    <section aria-label="Tus audios">
       <SectionHeader
-        title="Samples"
+        title="Audios"
         subtitle="Tus audios: beatboxes para el ritmo, melodías de referencia y tu voz."
         hideSubtitleOnMobile
         action={
           <TabCtaButton icon={Plus} onClick={() => setUploadOpen(true)}>
-            Subir sample
+            Subir audio
           </TabCtaButton>
         }
       />
 
       <div className="mb-5 flex items-center justify-between gap-2">
-        <div className="flex flex-wrap gap-2" role="group" aria-label="Filtrar samples por tipo">
+        <div className="flex flex-wrap gap-2" role="group" aria-label="Filtrar audios por tipo">
           {KIND_FILTERS.map((f) => (
             <Chip key={f.key} active={kind === f.key} onClick={() => setKind(f.key)}>
               {f.label}
@@ -155,9 +171,9 @@ export function SamplesTab() {
           <EmptyState
             variant="studio"
             icon={<AudioLines className="h-7 w-7" />}
-            title="Todavía no tenés samples."
+            title="Todavía no tenés audios."
             description="Subí un beatbox, una melodía o tu voz para usarlos como referencia en tus creaciones."
-            actionLabel="Subir mi primer sample"
+            actionLabel="Subir mi primer audio"
             onAction={() => setUploadOpen(true)}
           />
         ) : (
@@ -165,49 +181,23 @@ export function SamplesTab() {
             variant="studio"
             icon={<AudioLines className="h-7 w-7" />}
             title={kind === 'VOICE' ? 'Todavía no subiste muestras de voz.' : 'Todavía no subiste instrumentos.'}
-            description="Los samples que subís aparecen acá y los podés usar al crear canciones."
-            actionLabel="Subir sample"
+            description="Los audios que subís aparecen acá y los podés usar al crear canciones."
+            actionLabel="Subir audio"
             onAction={() => setUploadOpen(true)}
           />
         )
       ) : (
         <div className={cn(list ? 'flex flex-col gap-2' : 'grid gap-3 sm:grid-cols-2 xl:grid-cols-3')}>
-          {samples.map((sample) => (
-            <article
-              key={sample.id}
-              className="relative flex flex-wrap items-center gap-x-3 gap-y-2 rounded-cover border border-border/70 bg-surface p-3 transition-colors hover:border-amber/40 sm:flex-nowrap"
-            >
-              {/* Mobile: ícono + texto arriba y las acciones en su propia fila (no entran todas en una línea) */}
-              <div className="flex min-w-0 basis-full items-center gap-3 max-sm:pr-14 sm:basis-0 sm:flex-1">
-              <div className="flex size-11 shrink-0 items-center justify-center rounded-full bg-element-sound text-[#131C33]" aria-hidden>
-                <AudioLines className="h-[22px] w-[22px]" />
-              </div>
-              <div className="min-w-0 flex-1">
-                <h3 className="truncate text-sm font-semibold text-foreground">{sample.name}</h3>
-                {/* Fecha debajo del título, como en Letristas */}
-                <p className="text-xs text-muted-foreground first-letter:uppercase">{formatRelative(sample.createdAt)}</p>
-                <div className="mt-1 flex flex-wrap items-center gap-1.5">
-                  <Chip className="px-2 py-0.5">{TYPE_LABELS[sample.type] ?? sample.type}</Chip>
-                  <Chip className="px-2 py-0.5">{sample.kind === 'VOICE' ? 'Voz' : 'Instrumento'}</Chip>
-                  {sample.durationSec ? <span className="text-xs text-muted-foreground">{formatDuration(sample.durationSec)}</span> : null}
-                </div>
-                {sample.description ? (
-                  <p className="mt-1 line-clamp-1 text-xs leading-relaxed text-muted-foreground" title={sample.description}>
-                    {sample.description}
-                  </p>
-                ) : null}
-                {sample.sunoPersonaId ? <p className="mt-1 truncate text-xs text-muted-foreground">Voz clonada ✓</p> : null}
-              </div>
-              </div>
-              <div className="flex shrink-0 items-center justify-end gap-1 max-sm:contents sm:w-auto">
+          {samples.map((sample) => {
+            const playBtn = (
               <SamplePlayButton
                 id={sample.id}
                 name={sample.name}
-                className="shrink-0 max-sm:absolute max-sm:right-3 max-sm:bottom-3"
+                className={cn('shrink-0', list ? 'sm:size-9' : 'size-11 [&_svg]:size-[18px]')}
                 track={() => ({
                   id: sample.id,
                   title: sample.name,
-                  artist: 'Sample',
+                  artist: 'Audio',
                   coverUrl: null,
                   audioUrl: apiFileUrl(sample.fileUrl) ?? '',
                   kind: 'sample',
@@ -215,29 +205,101 @@ export function SamplesTab() {
                   durationSec: sample.durationSec,
                 })}
               />
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <button
-                      type="button"
-                      aria-label={`Opciones de ${sample.name}`}
-                      className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-surface-2 hover:text-foreground focus-visible:outline-2 focus-visible:outline-foreground max-sm:absolute max-sm:top-2 max-sm:right-2"
-                    >
-                      <MoreVertical className="h-4 w-4" aria-hidden />
-                    </button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end" variant="list" className={LIST_MENU_COMFORTABLE_MOBILE}>
-                    <DropdownMenuItem onClick={() => setToEdit(sample)}>
-                      <Pencil className="h-4 w-4" aria-hidden /> Editar
-                    </DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => setToDelete(sample)} className="text-destructive focus:text-destructive">
-                      <Trash2 className="h-4 w-4" aria-hidden /> Enviar a la Papelera
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
-              </div>
-
-            </article>
-          ))}
+            );
+            const dotsMenu = (
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <button
+              type="button"
+              aria-label={`Opciones de ${sample.name}`}
+              className={cn(
+                'flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-surface-2 hover:text-foreground focus-visible:outline-2 focus-visible:outline-foreground',
+                list && 'sm:hidden'
+              )}
+            >
+              <MoreVertical className="h-4 w-4" aria-hidden />
+            </button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" variant="list" className={LIST_MENU_COMFORTABLE_MOBILE}>
+            <DropdownMenuItem onClick={() => setToEdit(sample)}>
+              <Pencil className="h-4 w-4" aria-hidden /> Editar
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => setToDelete(sample)} className="text-destructive focus:text-destructive">
+              <Trash2 className="h-4 w-4" aria-hidden /> Enviar a la Papelera
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+            );
+            return (
+              <article
+                key={sample.id}
+                className={cn(
+                  '@container relative rounded-cover border border-[var(--m-border)] bg-[var(--m-input)] p-4 transition-colors hover:border-amber/40',
+                  /* Grilla: encabezado (ícono + nombre) y debajo, a todo el ancho, play + etiquetas y descripción. Lista: una sola fila. */
+                  list && 'flex items-center gap-3.5 pr-3'
+                )}
+              >
+                <div className={list ? 'contents' : 'grid grid-cols-[3rem_minmax(0,1fr)_auto] content-start gap-x-3.5 gap-y-2.5'}>
+                {/* design-V2 › Biblioteca › Audios: ícono circular por tipo (voz en naranja, instrumentos en azul), nombre, fecha · duración,
+                    etiquetas en píldoras, descripción de una línea y acciones. */}
+                <SampleTile type={sample.type} kind={sample.kind} className={!list ? 'col-start-1 row-start-1' : undefined} />
+                <div className={list ? 'min-w-0 flex-1' : 'contents'}>
+                  <div className={cn('min-w-0', !list && 'col-span-3 row-start-2 @[17rem]:col-span-1 @[17rem]:col-start-2 @[17rem]:row-start-1 @[17rem]:self-center')}>
+                    <h3 title={sample.name} className="truncate font-display text-lg font-bold leading-[1.2] text-foreground">{displayName(sample.name)}</h3>
+                    {/* Fecha y duración debajo del título */}
+                    <p className="mt-0.5 flex flex-wrap items-center gap-x-2 text-[13px] leading-[1.35] text-muted-foreground">
+                      <span className="first-letter:uppercase">{formatRelative(sample.createdAt)}</span>
+                      {sample.durationSec ? (
+                        <>
+                          <span aria-hidden>·</span>
+                          <span>{formatDuration(sample.durationSec)}</span>
+                        </>
+                      ) : null}
+                    </p>
+                  </div>
+                  <div className={cn('min-w-0', list ? 'mt-1.5' : 'col-span-3 row-start-3')}>
+                    <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <span className="inline-flex items-center rounded-full border border-muted-foreground px-[9px] py-[3px] text-xs leading-none font-medium text-foreground">{TYPE_LABELS[sample.type] ?? sample.type}</span>
+                        <span className="inline-flex items-center rounded-full border border-muted-foreground px-[9px] py-[3px] text-xs leading-none font-medium text-foreground">{sample.kind === 'VOICE' ? 'Voz' : 'Instrumento'}</span>
+                      </div>
+                    </div>
+                    {sample.description ? (
+                      <p className="mt-1.5 line-clamp-1 text-[13px] leading-snug text-muted-foreground" title={sample.description}>
+                        {sample.description}
+                      </p>
+                    ) : null}
+                    {sample.sunoPersonaId ? <p className="mt-1 truncate text-[13px] text-muted-foreground">Voz clonada ✓</p> : null}
+                  </div>
+                </div>
+                {/* Grilla: play a la izquierda de los 3 puntos, arriba a la derecha (como en Audios). */}
+                {!list && <div className="col-start-3 row-start-1 flex items-center gap-0.5 self-start justify-self-end">{playBtn}{dotsMenu}</div>}
+                {/* Vista lista: play + editar + enviar a la Papelera como botones a la vista (≥ sm). Grilla y mobile: menú de opciones. */}
+                {list && (
+                  <div className="flex shrink-0 items-center gap-1 sm:gap-3">
+                    {playBtn}
+                    {[
+                      { key: 'edit', label: 'Editar', Icon: PencilSolid, onClick: () => setToEdit(sample) },
+                      { key: 'delete', label: 'Enviar a la Papelera', Icon: TrashSolid, onClick: () => setToDelete(sample) },
+                    ].map(({ key, label, Icon, onClick }) => (
+                      <button
+                        key={key}
+                        type="button"
+                        onClick={onClick}
+                        title={label}
+                        aria-label={`${label}: ${sample.name}`}
+                        className="flex size-9 shrink-0 cursor-pointer items-center justify-center rounded-full border-[1.5px] border-foreground text-foreground transition-colors hover:bg-foreground/10 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground max-sm:hidden"
+                      >
+                        <Icon className="h-[18px] w-[18px]" />
+                      </button>
+                    ))}
+                  </div>
+                )}
+                {list && dotsMenu}
+                </div>
+              </article>
+            );
+          })}
         </div>
       )}
 
@@ -306,7 +368,7 @@ function UploadSampleDialog({ open, onOpenChange }: { open: boolean; onOpenChang
     },
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ['samples'] });
-      toast({ title: 'Sample subido', description: 'Ya lo podés usar como referencia al crear.' });
+      toast({ title: 'Audio subido', description: 'Ya lo podés usar como referencia al crear.' });
       reset();
       onOpenChange(false);
     },
@@ -317,7 +379,7 @@ function UploadSampleDialog({ open, onOpenChange }: { open: boolean; onOpenChang
         setConsentRace(true);
         setConsent(false);
       } else {
-        toast({ title: 'No pudimos subir el sample', description: toUserMessage(err), variant: 'destructive' });
+        toast({ title: 'No pudimos subir el audio', description: toUserMessage(err), variant: 'destructive' });
       }
     },
   });
@@ -356,7 +418,7 @@ function UploadSampleDialog({ open, onOpenChange }: { open: boolean; onOpenChang
     >
       <DialogContent className="max-h-[90vh] gap-3 overflow-y-auto border-border/70 bg-surface max-sm:max-h-[96dvh] max-sm:p-4 sm:max-w-lg sm:gap-4">
         <DialogHeader>
-          <DialogTitle className="font-display">Subir sample</DialogTitle>
+          <DialogTitle className="font-display">Subir audio</DialogTitle>
           <DialogDescription>
             Audio de hasta 50 MB. Beatboxes marcan el ritmo; melodías sirven de referencia.
           </DialogDescription>
@@ -409,7 +471,7 @@ function UploadSampleDialog({ open, onOpenChange }: { open: boolean; onOpenChang
               </>
             ) : (
               <>
-                <span className="max-w-[250px] font-display text-[19px] leading-tight font-semibold text-foreground max-sm:text-base">Audio del sample</span>
+                <span className="max-w-[250px] font-display text-[19px] leading-tight font-semibold text-foreground max-sm:text-base">Archivo de audio</span>
                 <span className="max-w-xs text-sm text-muted-foreground max-sm:text-xs">Tocá para elegir un audio (MP3, WAV, M4A…)</span>
               </>
             )}
@@ -517,7 +579,7 @@ function EditSampleDialog({ sample, onOpenChange }: { sample: UserSample; onOpen
     },
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ['samples'] });
-      toast({ title: 'Sample actualizado' });
+      toast({ title: 'Audio actualizado' });
       onOpenChange(false);
     },
     onError: (err) => {
@@ -536,7 +598,7 @@ function EditSampleDialog({ sample, onOpenChange }: { sample: UserSample; onOpen
     <Dialog open onOpenChange={onOpenChange}>
       <DialogContent className="max-h-[90vh] overflow-y-auto border-border/70 bg-surface sm:max-w-md">
         <DialogHeader>
-          <DialogTitle className="font-display">Editar sample</DialogTitle>
+          <DialogTitle className="font-display">Editar audio</DialogTitle>
           <DialogDescription>
             Cambiale el nombre, el tipo o la descripción. El archivo de audio queda tal cual está.
           </DialogDescription>

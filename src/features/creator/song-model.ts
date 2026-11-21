@@ -86,6 +86,8 @@ export interface SampleLite {
   type?: string;
   sunoPersonaId?: string | null;
   durationSec?: number | null;
+  /** Cuándo se creó (ISO), para mostrarlo en la lista de voces. */
+  createdAt?: string | null;
 }
 
 export interface Capabilities {
@@ -122,7 +124,7 @@ export const PLANETS: readonly PlanetDef[] = [
   { id: 'composition', label: 'Composición', blurb: 'La idea o tu letra, el título y si lleva voz o es instrumental.', base: true },
   { id: 'style', label: 'Estilo', blurb: 'Géneros y una descripción de cómo debería sonar.', base: true },
   { id: 'voice', label: 'Voz', blurb: 'Una preferencia masculina o femenina, o tu propia voz.', base: false },
-  { id: 'reference', label: 'Referencia de audio', blurb: 'Un audio tuyo como guía o para transformarlo.', base: false },
+  { id: 'reference', label: 'Audio', blurb: 'Un audio tuyo como guía o para transformarlo.', base: false },
   { id: 'production', label: 'Producción', blurb: 'Duración y cosas que querés evitar.', base: false },
   { id: 'creativity', label: 'Creatividad', blurb: 'Rareza, influencia del estilo y variedad.', base: false },
 ];

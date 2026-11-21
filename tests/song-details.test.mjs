@@ -153,7 +153,9 @@ test('el detalle ofrece «Editar detalles» y monta el formulario SOLO para el d
 
 test('la descripción solo se pinta si existe y el resumen cae a los estilos derivados', () => {
   const view = read('src/features/song/SongDetailView.tsx');
-  assert.match(view, /\{hasText\(song\.description\) && \(/);
+  // dueño: bloque debajo del encabezado; comunidad: junto a la portada, sin contenedor. Ambos solo si hay texto.
+  assert.match(view, /\{isOwner && hasText\(song\.description\) && \(/);
+  assert.match(view, /\{!isOwner && hasText\(song\.description\) && \(/);
   assert.match(view, /customStyleSummary\(song\)/);
   assert.match(view, /styleSummary \? \(/);
   // sin resumen propio se conservan el género y las etiquetas de la versión (presentación derivada)

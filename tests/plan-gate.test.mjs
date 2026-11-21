@@ -200,8 +200,10 @@ test('Biblioteca → Voces: TODAS las entradas de clonación (Crear voz, estado 
   // Ningún acceso abre el diálogo de clonación sin pasar por la guardia.
   const opens = voices.split('\n').filter((l) => l.includes('setCreateOpen(true)'));
   assert.equal(opens.length, 3, 'solo openCreate, openResume y openRecreate (todas con la guardia) abren el flujo');
-  // Corona y plan en los tres botones visibles.
-  assert.equal((voices.match(/<RequiredPlanBadge capability="VOICE_CLONING"/g) ?? []).length, 3);
+  // Corona y plan en cada acceso visible: «Crear voz» (encabezado), estado vacío y «Clonar mi voz» en sus dos presentaciones
+  // (ítem del menú de 3 puntos y botón de la lista).
+  assert.equal((voices.match(/<RequiredPlanBadge capability="VOICE_CLONING"/g) ?? []).length, 4);
+  assert.equal((voices.match(/Clonar mi voz(<\/span>)?\s*\n\s*<RequiredPlanBadge capability="VOICE_CLONING"/g) ?? []).length, 2, '«Clonar mi voz» lleva corona en ambas presentaciones');
 });
 
 /* ───────── Corona (plan no incluye) separada del bloqueo (el servidor la exige) ───────── */

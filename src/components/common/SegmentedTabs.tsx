@@ -13,13 +13,17 @@ export function SegmentedTabs<K extends string>({
   onChange,
   ariaLabel,
   className,
+  variant = 'default',
 }: {
   tabs: ReadonlyArray<{ key: K; label: string; icon: ComponentType<{ className?: string }> }>;
   value: K;
   onChange: (key: K) => void;
   ariaLabel: string;
   className?: string;
+  /** `trash`: el selector de la Papelera de design-V2 (borde al 50 %, texto al 62 %, activo en dorado con texto navy). */
+  variant?: 'default' | 'trash';
 }) {
+  const trash = variant === 'trash';
   /* Indicador deslizante: una sola "píldora" que se mueve (left/width) hasta la pestaña activa. */
   const listRef = useRef<HTMLDivElement>(null);
   const tabRefs = useRef<Partial<Record<string, HTMLButtonElement | null>>>({});
@@ -85,13 +89,13 @@ export function SegmentedTabs<K extends string>({
             e.stopPropagation();
           }
         }}
-        className="relative flex gap-1 scrollbar-none select-none overflow-x-auto rounded-[28px] border-[1.5px] border-line p-1"
+        className={cn('relative flex gap-1 scrollbar-none select-none overflow-x-auto rounded-[28px] border-[1.5px] p-1', trash ? 'border-line/50' : 'border-line')}
       >
         {thumb && (
           <span
             aria-hidden
             className={cn(
-              'pointer-events-none absolute top-1 bottom-1 rounded-[22px] bg-selected motion-reduce:transition-none',
+              'pointer-events-none absolute top-1 bottom-1 rounded-[22px] motion-reduce:transition-none', trash ? 'bg-gold' : 'bg-selected',
               animate && 'transition-[left,width] duration-300 ease-[cubic-bezier(0.4,0,0.2,1)]'
             )}
             style={{ left: thumb.left, width: thumb.width }}
@@ -111,7 +115,8 @@ export function SegmentedTabs<K extends string>({
               onClick={() => onChange(key)}
               className={cn(
                 'relative z-[1] flex h-10 flex-1 shrink-0 items-center justify-center gap-1.5 rounded-[22px] px-3 text-[12.5px] sm:h-11 sm:px-4 sm:text-[13px] whitespace-nowrap transition-colors focus-visible:outline-2 focus-visible:outline-offset-2',
-                active ? 'font-bold text-on-selected' : 'font-medium text-foreground hover:bg-accent'
+                trash && 'h-10 px-3.5 text-sm sm:h-10 sm:px-3.5 sm:text-sm',
+                active ? (trash ? 'font-bold text-[#131C33]' : 'font-bold text-on-selected') : trash ? 'font-medium text-foreground/60 hover:bg-accent' : 'font-medium text-foreground hover:bg-accent'
               )}
             >
               {active && <Icon className="h-3.5 w-3.5 shrink-0" aria-hidden />}

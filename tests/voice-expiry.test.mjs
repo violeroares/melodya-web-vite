@@ -126,7 +126,12 @@ test('la tarjeta consulta la disponibilidad de su voz y la muestra con los cuatr
   assert.equal((cardArea.match(/Disponible al crear canciones/g) ?? []).length, 1);
   // accesibilidad y acción de recrear
   assert.match(card, /role="status" aria-live="polite"/);
-  assert.match(card, /variant=\{expired \? 'default' : 'ghost'\}/, 'recrear se destaca solo si caducó');
+  // Diseño de Biblioteca: «Recrear» es siempre la misma píldora (no se destaca según el estado); la caducidad se ve en el chip y la tarjeta.
+  assert.doesNotMatch(card, /variant=\{expired \?/, 'recrear ya no cambia de variante según el estado');
+  assert.match(card, /const expired = status === 'expired'/);
+  assert.match(card, /expired && 'opacity-55'/, 'el avatar de la voz caducada se atenúa');
+  assert.match(card, /expired && 'text-destructive'/, 'el chip caducado se marca en rojo');
+  assert.match(card, /<span>Recrear<\/span>/, 'el botón «Recrear» sigue visible junto a la tarjeta');
   assert.match(card, /aria-label=\{`Recrear la voz \$\{sample\.name\}`\}/, 'recrear sigue disponible en todos los estados');
 });
 

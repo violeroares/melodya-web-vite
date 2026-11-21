@@ -15,11 +15,11 @@
  *  • GET    /projects                          → proyectos propios (para "Agregar a proyecto")
  *  • GET    /community/songs/:id/comments       → comentarios (solo canciones PUBLIC)
  */
-import { useEffect, useRef, useState, type ChangeEvent, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ChangeEvent, type ReactNode, type RefObject } from 'react';
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient, type InfiniteData } from '@tanstack/react-query';
 import {
   Check, CheckCircle2, ChevronDown, ChevronLeft, ChevronUp, Clock, Copy, CornerDownRight, Download, Flag, FolderOpen, FolderPlus, Globe, Heart, ImagePlus,
-  ListEnd, ListMusic, ListStart, Loader2, Lock, MessageCircle, MoreVertical, Music4, Palette, Pause, Pencil, Play, RotateCcw, Send, Share2, Sparkles, ThumbsDown, Trash2,
+  ListMusic, ListPlus, Loader2, Lock, MessageCircle, MoreVertical, Music4, Palette, Pause, Pencil, Play, RotateCcw, Send, Share2, SkipForward, Sparkles, ThumbsDown, Trash2,
   Upload, UserCheck, UserPlus, Users, X,
 } from 'lucide-react';
 import { communityApi, generationApi, profileApi, projectsApi, songsApi } from '@/lib/api';
@@ -159,23 +159,45 @@ function songFromCommunity(c: CommunitySongDetail): Song {
 }
 
 /* ── Letra: [secciones] en ámbar, resto como texto ── */
-function LyricsBody({ text }: { text: string }) {
+function LyricsBody({ text, fillRef }: { text: string; fillRef?: RefObject<HTMLElement | null> }) {
   const lines = text.split('\n');
   const isSection = (l: string | undefined) => l !== undefined && /^\s*\[([^\]]+)\]\s*$/.test(l);
   const [expanded, setExpanded] = useState(false);
   const [overflows, setOverflows] = useState(false);
+  const [limit, setLimit] = useState(LYRICS_COLLAPSED_PX);
   const innerRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     const el = innerRef.current;
-    if (el) setOverflows(el.scrollHeight > LYRICS_COLLAPSED_PX);
-  }, [text]);
+    if (!el) return;
+    const col = fillRef?.current ?? null;
+    /* Con las tarjetas de la derecha al costado (lg), la letra se muestra hasta donde llega esa columna (menos el relleno de la tarjeta y el botón) */
+    const measure = () => {
+      let lim = LYRICS_COLLAPSED_PX;
+      if (col && window.matchMedia('(min-width: 1024px)').matches) {
+        const avail = col.getBoundingClientRect().bottom - el.getBoundingClientRect().top - 24 - 36;
+        lim = Math.max(lim, Math.floor(avail));
+      }
+      setLimit(lim);
+      setOverflows(el.scrollHeight > lim);
+    };
+    measure();
+    if (typeof ResizeObserver === 'undefined') return;
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    if (col) ro.observe(col);
+    window.addEventListener('resize', measure);
+    return () => {
+      ro.disconnect();
+      window.removeEventListener('resize', measure);
+    };
+  }, [text, fillRef]);
   const collapsed = overflows && !expanded;
   return (
     <div>
       <div
         ref={innerRef}
         className={collapsed ? 'overflow-hidden' : undefined}
-        style={collapsed ? { maxHeight: LYRICS_COLLAPSED_PX, WebkitMaskImage: 'linear-gradient(to bottom, black calc(100% - 64px), transparent 100%)', maskImage: 'linear-gradient(to bottom, black calc(100% - 64px), transparent 100%)' } : undefined}
+        style={collapsed ? { maxHeight: limit, WebkitMaskImage: 'linear-gradient(to bottom, black calc(100% - 64px), transparent 100%)', maskImage: 'linear-gradient(to bottom, black calc(100% - 64px), transparent 100%)' } : undefined}
         role="region"
         aria-label="Letra de la canción"
       >
@@ -196,6 +218,73 @@ function LyricsBody({ text }: { text: string }) {
           return <p key={i} className="text-[15px] leading-[1.8] text-foreground/90">{line || '\u00A0'}</p>;
         })}
       </div>
+      </div>
+      {overflows && (
+        <button
+          type="button"
+          onClick={() => setExpanded((v) => !v)}
+          aria-expanded={expanded}
+          className="mt-2 inline-flex items-center gap-1 rounded-md text-sm font-medium text-amber-strong transition-colors hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        >
+          {expanded ? (
+            <>
+              <ChevronUp className="h-4 w-4" aria-hidden />
+              Mostrar menos
+            </>
+          ) : (
+            <>
+              <ChevronDown className="h-4 w-4" aria-hidden />
+              Mostrar más
+            </>
+          )}
+        </button>
+      )}
+    </div>
+  );
+}
+
+/* Ícono de título de tarjeta: círculo con el color de un planeta del sistema solar (Composición, Estilo, Audio, Voz) y el ícono en tinta oscura */
+function PlanetIcon({ tone, children }: { tone: 'composition' | 'style' | 'audio' | 'voice'; children: ReactNode }) {
+  const bg = {
+    composition: 'bg-[#FF6B4D]',
+    style: 'bg-[#D2A692] dark:bg-[#E0B8A9]',
+    audio: 'bg-[#7B93E8]',
+    voice: 'bg-[#F0A44B]',
+  }[tone];
+  return (
+    <span aria-hidden className={cn('flex size-8 shrink-0 items-center justify-center rounded-full text-[#131C33]', bg)}>
+      {children}
+    </span>
+  );
+}
+
+/* ── Contenido que se lee hasta ~10 líneas de alto; si se pasa, se atenúa y aparece «Mostrar más» (igual que la letra) ── */
+const COLLAPSED_BOX_PX = 240; // 10 líneas de 24 px
+function CollapsibleBox({ children, label }: { children: ReactNode; label: string }) {
+  const [expanded, setExpanded] = useState(false);
+  const [overflows, setOverflows] = useState(false);
+  const innerRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = innerRef.current;
+    if (!el) return;
+    const measure = () => setOverflows(el.scrollHeight > COLLAPSED_BOX_PX);
+    measure();
+    if (typeof ResizeObserver === 'undefined') return;
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+  const collapsed = overflows && !expanded;
+  return (
+    <div>
+      <div
+        ref={innerRef}
+        className={collapsed ? 'overflow-hidden' : undefined}
+        style={collapsed ? { maxHeight: COLLAPSED_BOX_PX, WebkitMaskImage: 'linear-gradient(to bottom, black calc(100% - 64px), transparent 100%)', maskImage: 'linear-gradient(to bottom, black calc(100% - 64px), transparent 100%)' } : undefined}
+        role="region"
+        aria-label={label}
+      >
+        {children}
       </div>
       {overflows && (
         <button
@@ -916,6 +1005,7 @@ export function SongDetailView({ songId }: { songId: string }) {
   const [coverPrompt, setCoverPrompt] = useState('');
   const [coverStyle, setCoverStyle] = useState('');
   const coverInputRef = useRef<HTMLInputElement>(null);
+  const rightColRef = useRef<HTMLDivElement>(null); // columna de tarjetas junto a la letra: la letra se muestra hasta su alto
 
   /* Diálogo "Agregar a proyecto" */
   const [projectDialogOpen, setProjectDialogOpen] = useState(false);
@@ -1276,6 +1366,93 @@ export function SongDetailView({ songId }: { songId: string }) {
     );
   };
 
+  /* «Info de generación» (solo el dueño): tarjeta que va arriba de «Estilo» en la columna derecha de la letra */
+  const genInfoCard =
+    isOwner && gen ? (
+      <Card className="h-fit min-w-0 rounded-cover border-border/70 bg-surface">
+        <CardHeader className="pb-0">
+          <CardTitle className="flex items-center gap-2 font-display text-lg font-bold">
+            <PlanetIcon tone="audio"><Sparkles className="h-4 w-4" /></PlanetIcon> Info de generación
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="flex flex-wrap gap-x-10 gap-y-3 text-sm">
+          <div className="flex flex-col items-start gap-0.5">
+            <b className="text-[15px] font-bold">Estado</b>
+            <Badge variant="outline" className="border-amber/40 text-amber-strong">
+              {GEN_STATUS_LABEL[gen.status] ?? gen.status}
+            </Badge>
+          </div>
+          <div className="flex flex-col items-start gap-0.5">
+            <b className="text-[15px] font-bold">Costo</b>
+            <span className="text-[13px] leading-[1.3] text-muted-foreground">{gen.creditsCost > 0 ? `Costó ${gen.creditsCost} fichas` : 'Sin costo'}</span>
+          </div>
+          <div className="flex flex-col items-start gap-0.5">
+            <b className="text-[15px] font-bold">Generada</b>
+            <span className="text-[13px] leading-[1.3] text-muted-foreground">{formatRelative(gen.createdAt)}</span>
+          </div>
+        </CardContent>
+      </Card>
+    ) : null;
+
+  /* Botones «Reproducir a continuación» / «Agregar a la cola»: al lado de versión y duración; no se muestran en la Papelera (sin sección de Comunidad) */
+  const queueButtons = access.showCommunity && currentVersion?.audioUrl ? (
+    <div className="flex items-center gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              title="Reproducir a continuación"
+              aria-label={`Reproducir ${song.title} a continuación`}
+              onClick={() => onQueue('next')}
+              className="size-12 rounded-full border-0 bg-selected p-0 text-on-selected hover:bg-selected/90 hover:text-on-selected"
+            >
+              <SkipForward className="h-5 w-5" aria-hidden />
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              title="Agregar a la cola"
+              aria-label={`Agregar ${song.title} a la cola`}
+              onClick={() => onQueue('end')}
+              className="size-12 rounded-full border-0 bg-selected p-0 text-on-selected hover:bg-selected/90 hover:text-on-selected"
+            >
+              <ListPlus className="h-[22px] w-[22px]" aria-hidden />
+            </Button>
+    </div>
+  ) : null;
+
+  /* Me gusta / No me gusta (solo canciones de otras personas; en la propia los números ya están en la portada): estilo «likebig» del mockup (píldora con ícono y contador), a su lado */
+  const reactionButtons =
+    !isOwner && access.showCommunity ? (
+      <div className="flex items-center gap-2">
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          aria-pressed={viewerLiked}
+          aria-label={viewerLiked ? `Quitar me gusta de ${song.title}` : `Me gusta ${song.title}`}
+          title={viewerLiked ? 'Quitar me gusta' : 'Me gusta'}
+          onClick={() => onReact('LIKE')}
+          className="size-12 rounded-full border-[1.5px] border-foreground bg-transparent p-0 text-foreground hover:bg-foreground/10 hover:text-foreground"
+        >
+          <Heart key={viewerLiked ? 'on' : 'off'} className={cn('h-[22px] w-[22px]', viewerLiked && 'fill-current text-primary heart-pop')} aria-hidden />
+        </Button>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          aria-pressed={viewerDisliked}
+          aria-label={viewerDisliked ? `Quitar no me gusta de ${song.title}` : `No me gusta ${song.title}`}
+          title={viewerDisliked ? 'Quitar no me gusta' : 'No me gusta'}
+          onClick={() => onReact('DISLIKE')}
+          className="size-12 rounded-full border-[1.5px] border-foreground bg-transparent p-0 text-foreground hover:bg-foreground/10 hover:text-foreground"
+        >
+          <ThumbsDown className={cn('h-[22px] w-[22px]', viewerDisliked && 'fill-current')} aria-hidden />
+        </Button>
+      </div>
+    ) : null;
+
   return (
     <div className="view-in mx-auto w-full max-w-7xl space-y-8">
       <Button variant="ghost" size="sm" className="-ml-2 rounded-full text-muted-foreground hover:text-foreground" onClick={onBack} aria-label="Volver">
@@ -1284,26 +1461,33 @@ export function SongDetailView({ songId }: { songId: string }) {
 
       {/* ── Papelera: mismo detalle en solo lectura; se puede escuchar y restaurar ── */}
       {access.showTrashBanner && (
-        <div role="status" data-testid="trash-banner" className="flex flex-wrap items-center gap-3 rounded-2xl border border-amber/40 bg-amber/10 px-4 py-3">
-          <Trash2 className="h-5 w-5 shrink-0 text-amber-strong" aria-hidden />
+        <div role="status" data-testid="trash-banner" className="flex flex-wrap items-center gap-3.5 rounded-cover border border-[var(--m-border)] bg-[var(--m-input)] px-4 py-3.5">
+          {/* Como el icono de un planeta (círculo de color con el icono en navy), en rojo */}
+          <span className="flex size-12 shrink-0 items-center justify-center rounded-full bg-destructive text-[#FFF6F2] dark:text-[#131C33]" aria-hidden>
+            <Trash2 className="h-[22px] w-[22px]" />
+          </span>
           <div className="min-w-0 flex-1">
-            <p className="text-sm font-semibold text-foreground">Esta canción está en la Papelera</p>
-            <p className="text-xs text-muted-foreground">
+            <p className="font-display text-base leading-[1.2] font-bold text-foreground sm:text-lg">Esta canción está en la Papelera</p>
+            {/* «Enviada hace X días.» debajo del título, con el estilo del origen «Con Melodya» de las letras */}
+            {song.deletedAt && <p className="mt-1 text-[13px] leading-[1.35] font-semibold text-label">{`Enviada ${formatRelative(song.deletedAt)}.`}</p>}
+            <p className="mt-0.5 text-xs leading-[1.35] text-muted-foreground sm:text-[13px]">
               Podés escucharla y leer su letra, pero no editarla, compartirla ni descargarla. No se ve en la Comunidad hasta que la restaures.
-              {song.deletedAt ? ` Enviada ${formatRelative(song.deletedAt)}.` : ''}
             </p>
           </div>
-          <Button type="button" className="rounded-full" disabled={restoreMutation.isPending} onClick={() => restoreMutation.mutate()}>
+          <Button type="button" variant="ghost" className="h-10 shrink-0 rounded-full border-[1.5px] border-line bg-transparent px-4 text-[15px] font-bold tracking-[.02em] text-foreground hover:bg-foreground/10 hover:text-foreground max-sm:size-10 max-sm:gap-0 max-sm:px-0" aria-label="Restaurar" disabled={restoreMutation.isPending} onClick={() => restoreMutation.mutate()}>
             {restoreMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <RotateCcw className="h-4 w-4" aria-hidden />}
-            Restaurar
+            <span className="max-sm:sr-only">Restaurar</span>
           </Button>
         </div>
       )}
 
       {/* ── Hero ── */}
       {/* Estilo de «Canción destacada» (Comunidad, design-V2 feed.html): portada ancha con esquinas 28/28/14/14 y una franja navy translúcida abajo con el texto */}
-      <section className="relative" aria-label="Detalle de la canción">
-        <div className="relative flex min-h-72 flex-col justify-end overflow-hidden rounded-[28px_28px_14px_14px] bg-surface sm:min-h-80 lg:min-h-96">
+      <div className="@container">
+      <section className="flex flex-col gap-5 @3xl:flex-row @3xl:items-stretch @3xl:gap-6" aria-label="Detalle de la canción">
+        {/* Portada cuadrada a la izquierda: lleva dentro la menú de tres puntos, los datos de comunidad/estadísticas y el botón de reproducir */}
+        <div className="relative w-full shrink-0 @3xl:w-[22rem] @3xl:self-start @5xl:w-[400px]">
+        <div className="relative flex aspect-square w-full flex-col justify-end overflow-hidden rounded-[28px_28px_14px_14px] bg-surface">
           <CoverArt
             id={song.id}
             src={song.coverUrl}
@@ -1311,6 +1495,28 @@ export function SongDetailView({ songId }: { songId: string }) {
             rounded="rounded-none"
             className="absolute inset-0 h-full w-full"
           />
+          {/* Cápsulas de estado dentro de la portada, arriba a la izquierda (como en el mockup): «En la comunidad» / «Privada» (dueño) y «En la Papelera» */}
+          {(access.showTrashBanner || access.canModify) && (
+            <div className="absolute top-3 left-0 z-10 flex max-w-[calc(100%-4.5rem)] flex-col items-start gap-1.5">
+              {access.showTrashBanner && (
+                <span className="inline-flex items-center gap-1.5 rounded-r-full bg-background py-1 pr-3 pl-1 text-xs font-bold text-foreground" title="Está en la Papelera">
+                  <span aria-hidden className="flex size-6 shrink-0 items-center justify-center rounded-full bg-faint text-foreground"><Trash2 className="h-3.5 w-3.5" /></span>
+                  En la Papelera
+                </span>
+              )}
+              {access.canModify && (
+                <span
+                  className="inline-flex items-center gap-1.5 rounded-r-full bg-background bg-[image:linear-gradient(var(--m-capsule-tint),var(--m-capsule-tint))] py-1 pr-3 pl-1 text-xs font-bold text-foreground"
+                  title={song.visibility === 'PUBLIC' ? 'Publicada en la comunidad' : 'Solo la ves vos'}
+                >
+                  <span aria-hidden className={cn('flex size-6 shrink-0 items-center justify-center rounded-full', song.visibility === 'PUBLIC' ? 'bg-primary text-primary-foreground' : 'bg-faint text-foreground')}>
+                    {song.visibility === 'PUBLIC' ? <Globe className="h-3.5 w-3.5" /> : <Lock className="h-3.5 w-3.5" />}
+                  </span>
+                  {song.visibility === 'PUBLIC' ? 'En la comunidad' : 'Privada'}
+                </span>
+              )}
+            </div>
+          )}
           {/* Menú de tres puntos arriba a la derecha: reúne todas las acciones de la canción (mismo estilo «list» que los de la Biblioteca) */}
           <div className="absolute top-3 right-3 z-10">
             <DropdownMenu>
@@ -1333,21 +1539,6 @@ export function SongDetailView({ songId }: { songId: string }) {
                 {access.canModify && (
                   <DropdownMenuItem onClick={() => setDetailsOpen(true)} title="Nombre, portada, resumen de estilos y descripción">
                     <Pencil className="h-4 w-4" aria-hidden /> Editar detalles
-                  </DropdownMenuItem>
-                )}
-                {access.canModify && (
-                  <DropdownMenuItem
-                    disabled={visibilityMutation.isPending}
-                    onClick={() => visibilityMutation.mutate({ visibility: song.visibility === 'PUBLIC' ? 'PRIVATE' : 'PUBLIC' })}
-                  >
-                    {visibilityMutation.isPending ? (
-                      <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
-                    ) : song.visibility === 'PUBLIC' ? (
-                      <Lock className="h-4 w-4" aria-hidden />
-                    ) : (
-                      <Users className="h-4 w-4" aria-hidden />
-                    )}
-                    {song.visibility === 'PUBLIC' ? 'Quitar de comunidad' : 'Publicar en comunidad'}
                   </DropdownMenuItem>
                 )}
                 {access.canShare && (
@@ -1407,90 +1598,30 @@ export function SongDetailView({ songId }: { songId: string }) {
               </DropdownMenuContent>
             </DropdownMenu>
           </div>
-        <div className="relative min-w-0 space-y-3 bg-[rgba(19,28,51,.72)] pt-5 pr-24 pb-[18px] pl-5 text-[#F3E5E2]">
-          {/* Cápsula como la de «En comunidad» en las portadas de la Biblioteca: sale del borde izquierdo (compensa el padding de la franja), ícono en círculo de acento y fondo sólido bajo el tinte */}
-          {access.showTrashBanner && (
-            <span className="-ml-5 inline-flex items-center gap-1.5 rounded-full rounded-l-none bg-background py-0.5 pr-3 pl-1 text-xs font-bold text-foreground" title="Está en la Papelera">
-              <span aria-hidden className="flex size-6 shrink-0 items-center justify-center rounded-full bg-faint text-foreground"><Trash2 className="h-3.5 w-3.5" /></span>
-              En la Papelera
-            </span>
-          )}
-          {access.canModify && (
-            <span
-              className="-ml-5 inline-flex items-center gap-1.5 rounded-full rounded-l-none bg-background bg-[image:linear-gradient(var(--m-capsule-tint),var(--m-capsule-tint))] py-0.5 pr-3 pl-1 text-xs font-bold text-foreground"
-              title={song.visibility === 'PUBLIC' ? 'Publicada en la comunidad' : 'Solo la ves vos'}
-            >
-              <span aria-hidden className={cn('flex size-6 shrink-0 items-center justify-center rounded-full', song.visibility === 'PUBLIC' ? 'bg-primary text-primary-foreground' : 'bg-faint text-foreground')}>
-                {song.visibility === 'PUBLIC' ? <Globe className="h-3.5 w-3.5" /> : <Lock className="h-3.5 w-3.5" />}
-              </span>
-              {song.visibility === 'PUBLIC' ? 'En la comunidad' : 'Privada'}
-            </span>
-          )}
-
-          <div className="flex flex-wrap items-center gap-2">
-            {isCurrentSongPlaying && <EqualizerBars className="h-4 shrink-0" />}
-            <h1 className="min-w-0 break-words font-display text-[22px] leading-[1.1] font-bold sm:text-[28px]">{song.title}</h1>
-          </div>
-
-          {/* meta: en celular los chips y los datos van en dos filas; desde sm los datos quedan en la misma fila, en el extremo derecho */}
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-x-4">
-          <div className="flex min-w-0 flex-wrap items-center gap-2">
-            {/* Resumen de estilos del dueño («Editar detalles»); sin resumen propio se conserva la presentación derivada de la versión (género + etiquetas). */}
-            {styleSummary ? (
-              <p className="min-w-0 break-words text-sm font-medium text-[#F3E5E2]">{styleSummary}</p>
-            ) : (
-              <>
-                {genre && <Chip className="border-[#F3E5E2] bg-[#F3E5E2]/15 font-bold text-[#F3E5E2] hover:bg-[#F3E5E2]/25">{genre}</Chip>}
-                {tags.map((t) => (
-                  <Chip key={t} className="border-[#F3E5E2]/50 text-[#F3E5E2] hover:bg-white/10">{t}</Chip>
-                ))}
-              </>
-            )}
-          </div>
-
-          {/* duración, versión y proyecto */}
-          <div className="flex flex-wrap items-center gap-2 sm:-mr-[4.75rem] sm:shrink-0 sm:justify-end">
-            {isOwner && currentVersion && (
-              <span className="rounded-full bg-white/15 px-3 py-1 text-xs font-medium text-[#F3E5E2]">Versión v{currentVersion.versionNumber}</span>
-            )}
-            {currentVersion?.durationSec != null && (
-              <span className="inline-flex items-center gap-1.5 text-sm text-[rgba(243,229,226,.85)]">
-                <Clock className="h-3.5 w-3.5 text-gold" aria-hidden />
-                {formatDuration(currentVersion.durationSec)}
-              </span>
-            )}
-            {songProject && (
-              <span className="inline-flex items-center gap-1.5 text-sm text-[rgba(243,229,226,.85)]" title={`Proyecto: ${songProject.name}`}>
-                <FolderOpen className="h-3.5 w-3.5 text-gold" aria-hidden />
-                {songProject.name}
-              </span>
-            )}
-          </div>
-          </div>
-
+        <div className="relative min-w-0 space-y-2 bg-[rgba(19,28,51,.72)] pt-3 pr-[5.5rem] pb-3 pl-4 text-[#F3E5E2]">
           {/* stats (solo si hay interacción o es pública) */}
           {(song.visibility === 'PUBLIC' || song.likesCount + song.playsCount + song.commentsCount + (song.remixCount ?? 0) > 0) && (
-            <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-[rgba(243,229,226,.85)]">
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-[14px] font-semibold text-[rgba(243,229,226,.85)]">
               <span className="inline-flex items-center gap-1.5" title="Reproducciones" aria-label={`${song.playsCount} reproducciones`}>
-                <Play className="h-3.5 w-3.5" aria-hidden />
+                <Play className="h-[17px] w-[17px]" aria-hidden />
                 {formatNumber(song.playsCount)}
               </span>
               <span className="inline-flex items-center gap-1.5">
-                <Heart className={cn('h-3.5 w-3.5', viewerLiked && 'fill-current text-[#FF8A70]')} aria-hidden />
+                <Heart className={cn('h-[17px] w-[17px]', viewerLiked && 'fill-current text-[#FF8A70]')} aria-hidden />
                 {formatNumber(likesCount)}
               </span>
               <span className="inline-flex items-center gap-1.5" title="No me gusta">
-                <ThumbsDown className="h-3.5 w-3.5" aria-hidden />
+                <ThumbsDown className="h-[17px] w-[17px]" aria-hidden />
                 {formatNumber(dislikesCount)}
               </span>
               <span className="inline-flex items-center gap-1.5">
-                <MessageCircle className="h-3.5 w-3.5" aria-hidden />
+                <MessageCircle className="h-[17px] w-[17px]" aria-hidden />
                 {formatNumber(song.commentsCount)}
               </span>
               {/* Remixes DIRECTOS visibles para ti (público, activo, con audio y sin bloqueos): el número lo calcula el backend (remixCount) */}
               {typeof song.remixCount === 'number' && (
                 <span className="inline-flex items-center gap-1.5" title="Remixes" aria-label={`${song.remixCount} ${song.remixCount === 1 ? 'remix' : 'remixes'}`} data-testid="remix-count">
-                  <RemixIcon className="h-3.5 w-3.5" aria-hidden />
+                  <RemixIcon className="h-[17px] w-[17px]" aria-hidden />
                   {formatNumber(song.remixCount)}
                 </span>
               )}
@@ -1505,124 +1636,207 @@ export function SongDetailView({ songId }: { songId: string }) {
           disabled={!currentVersion?.audioUrl}
           aria-label={isCurrentVersionPlaying ? 'Pausar' : 'Reproducir'}
           title={isCurrentVersionPlaying ? 'Pausar' : 'Reproducir'}
-          className="absolute right-4 -bottom-3.5 z-10 flex size-[60px] cursor-pointer items-center justify-center rounded-full bg-primary text-primary-foreground shadow-[0_0_0_5px_var(--background)] transition-transform active:scale-95 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-foreground disabled:cursor-not-allowed disabled:bg-faint disabled:text-muted-foreground"
+          className="absolute right-3 -bottom-3.5 z-10 flex size-[72px] cursor-pointer items-center justify-center rounded-full bg-primary text-primary-foreground shadow-[0_0_0_5px_var(--background)] transition-transform active:scale-95 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-foreground disabled:cursor-not-allowed disabled:bg-faint disabled:text-muted-foreground"
         >
-          {isCurrentVersionPlaying ? <Pause className="h-[18px] w-[18px] fill-current" aria-hidden /> : <Play className="h-[18px] w-[18px] translate-x-px fill-current" aria-hidden />}
+          {isCurrentVersionPlaying ? <Pause className="h-[22px] w-[22px] fill-current" aria-hidden /> : <Play className="h-[22px] w-[22px] translate-x-px fill-current" aria-hidden />}
         </button>
+        </div>
+        {/* Datos a la derecha de la portada */}
+        <div className="flex w-full min-w-0 flex-1 flex-col gap-3">
+          {/* título, versión, duración y géneros */}
+          <div className="flex min-w-0 flex-col gap-3">
+          {/* El título y el lápiz fluyen como texto en línea: el lápiz queda siempre pegado al final del título, aunque este ocupe varias líneas */}
+          <div className="min-w-0 break-words">
+            {isCurrentSongPlaying && <EqualizerBars className="mr-2 inline-flex h-4 shrink-0 align-middle" />}
+            <h1 className="inline font-display text-[22px] leading-[1.1] font-bold @xl:text-[28px] @3xl:text-[32px] @5xl:text-[40px]">{song.title}</h1>
+            {/* Lápiz (solo canción propia): abre «Editar detalles», donde se cambia el nombre */}
+            {access.canModify && (
+              <>
+                {'\u2060'}
+                <button
+                  type="button"
+                  onClick={() => setDetailsOpen(true)}
+                  aria-label="Editar el título de la canción"
+                  title="Editar el título"
+                  className="ml-2 inline-flex size-9 shrink-0 items-center justify-center rounded-full align-middle text-muted-foreground transition-colors hover:bg-foreground/10 hover:text-foreground focus-visible:outline-2 focus-visible:outline-foreground"
+                >
+                  <Pencil className="h-[18px] w-[18px]" aria-hidden />
+                </button>
+              </>
+            )}
+          </div>
+
+          {/* versión, duración y proyecto */}
+          <div className="flex flex-wrap items-center gap-2">
+            {reactionButtons}
+            {queueButtons}
+            {isOwner && currentVersion && (
+              <span className="rounded-full bg-foreground/10 px-3 py-1 text-xs font-medium text-foreground">Versión v{currentVersion.versionNumber}</span>
+            )}
+            {currentVersion?.durationSec != null && (
+              <span className="inline-flex items-center gap-1.5 text-sm text-muted-foreground">
+                <Clock className="h-3.5 w-3.5 text-gold" aria-hidden />
+                {formatDuration(currentVersion.durationSec)}
+              </span>
+            )}
+            {songProject && (
+              <span className="inline-flex items-center gap-1.5 text-sm text-muted-foreground" title={`Proyecto: ${songProject.name}`}>
+                <FolderOpen className="h-3.5 w-3.5 text-gold" aria-hidden />
+                {songProject.name}
+              </span>
+            )}
+          </div>
+
+          <div className="flex min-w-0 flex-wrap items-center gap-2">
+            {/* Resumen de estilos del dueño («Editar detalles»); sin resumen propio se conserva la presentación derivada de la versión (género + etiquetas). */}
+            {styleSummary ? (
+              <p className="min-w-0 break-words text-sm font-medium text-foreground">{styleSummary}</p>
+            ) : (
+              <>
+                {genre && <Chip className="font-bold">{genre}</Chip>}
+                {tags.map((t) => (
+                  <Chip key={t}>{t}</Chip>
+                ))}
+              </>
+            )}
+          </div>
+
+
+          </div>
+        {/* Versiones: pegadas abajo, a la altura del borde inferior de la portada */}
+        <div className="flex flex-col gap-3 @3xl:mt-auto">
+        {/* ── Descripción (canción de otra persona): sin contenedor, en el lugar donde el dueño ve sus versiones ── */}
+        {!isOwner && hasText(song.description) && (
+          <p className="whitespace-pre-line break-words text-sm leading-relaxed text-muted-foreground" aria-label="Descripción de la canción">
+            {song.description.trim()}
+          </p>
+        )}
+        {/* ── Versiones (dueño): debajo de versión y duración, a la derecha de la portada ── */}
+        {isOwner && (
+          <section className="@container mt-6 space-y-3" aria-label="Versiones de la canción">
+            <SectionHeader
+              title={
+              <>
+                Versiones
+                {versions.length > 0 && (
+                  <span className="text-sm font-normal tracking-normal text-muted-foreground normal-case">
+                    <span aria-hidden className="mr-2">·</span>
+                    {versions.length} {versions.length === 1 ? 'versión' : 'versiones'}
+                  </span>
+                )}
+              </>
+}
+            />
+            {/* Una cápsula por versión, como las de «Seguí creando» del inicio: pegadas al borde izquierdo, tinte terracota */}
+            <div className="grid grid-cols-1 gap-3 min-[1060px]:max-[1120px]:grid-cols-2 @md:grid-cols-2">
+                {versionsQuery.isLoading ? (
+                  <LoadingRows count={2} />
+                ) : versionsQuery.isError ? (
+                  <ErrorState message={toUserMessage(versionsQuery.error)} onRetry={() => void versionsQuery.refetch()} />
+                ) : versions.length === 0 ? (
+                  <p className="py-6 text-center text-sm text-muted-foreground">Todavía no hay versiones de esta canción.</p>
+                ) : (
+                  versions.map((v) => {
+                    const active = song.currentVersionId === v.id;
+                    const playing = Boolean(isPlaying && v.audioUrl && currentTrack?.audioUrl === resolveAudioUrl(v.audioUrl));
+                    return (
+                      <div
+                        key={v.id}
+                        className="flex min-h-[76px] min-w-0 items-center gap-2 rounded-[40px] bg-[var(--m-capsule-tint)] py-3 pr-3 pl-3 @[34rem]:gap-2.5"
+                      >
+                        {/* Igual que el botón de las filas de «De la comunidad» del inicio: círculo con borde, solo el ícono */}
+                        <button
+                          type="button"
+                          onClick={() => playVersion(v)}
+                          disabled={!v.audioUrl}
+                          aria-label={playing ? `Pausar versión ${v.versionNumber}` : `Escuchar versión ${v.versionNumber}`}
+                          title={playing ? 'Pausar' : 'Escuchar'}
+                          className={`flex size-9 shrink-0 items-center justify-center rounded-full border-[1.5px] transition-colors focus-visible:outline-2 focus-visible:outline-foreground disabled:cursor-not-allowed disabled:opacity-50 @[34rem]:size-11 ${
+                            playing ? 'border-primary bg-primary text-primary-foreground' : 'border-line text-foreground hover:border-[#A5390A] hover:bg-[#A5390A]/40'
+                          }`}
+                        >
+                          {playing ? <Pause className="h-4 w-4 fill-current" aria-hidden /> : <Play className="h-4 w-4 translate-x-px fill-current" aria-hidden />}
+                        </button>
+                        <div className="min-w-0 flex-1">
+                          <span className="block whitespace-nowrap text-sm font-semibold">Versión {v.versionNumber}</span>
+                          <p className="mt-0.5 text-xs text-muted-foreground">
+                            {formatRelative(v.createdAt)}
+                              {v.durationSec != null && <> · {formatDuration(v.durationSec)}</>}
+                          </p>
+                          {wavStatusText(wavFlow.phaseOf(v.id)) && (
+                            <p role="status" aria-live="polite" data-testid="wav-status" className="mt-0.5 flex items-center gap-1.5 text-xs text-[#A5390A]">
+                              <Loader2 className="h-3 w-3 animate-spin" aria-hidden /> {wavStatusText(wavFlow.phaseOf(v.id))}
+                            </p>
+                          )}
+                        </div>
+                        {/* Descarga de ESTA versión (MP3 / WAV): corresponde a la fila elegida, no a la versión activa. */}
+                        {v.audioUrl && access.canDownload && (
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <button
+                                type="button"
+                                aria-label={wavFlow.phaseOf(v.id) ? `Versión ${v.versionNumber}: preparando el WAV` : `Descargar la versión ${v.versionNumber}`}
+                                aria-busy={wavFlow.phaseOf(v.id) ? true : undefined}
+                                title={wavFlow.phaseOf(v.id) ? 'Preparando el WAV de esta versión' : 'Descargar esta versión'}
+                                className="flex size-8 shrink-0 items-center justify-center rounded-full border-[1.5px] border-line text-foreground transition-colors min-[1060px]:max-[1120px]:hidden @[34rem]:size-9 hover:border-[#A5390A] hover:bg-[#A5390A]/40 focus-visible:outline-2 focus-visible:outline-foreground"
+                              >
+                                {wavFlow.phaseOf(v.id) ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <Download className="h-4 w-4" aria-hidden />}
+                              </button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                              <DropdownMenuItem disabled={downloading || (!downloadState.allowed && !downloadGate.locked)} onClick={() => void onDownload('mp3', v)} title={downloadState.reason ?? downloadState.hint ?? 'Baja el MP3 de esta versión'} className={downloadGate.locked ? 'opacity-90' : undefined}>
+                                <Download className="h-4 w-4" aria-hidden />
+                                Descargar MP3
+                                <RequiredPlanBadge capability="DOWNLOAD_AUDIO" className="ml-auto" />
+                              </DropdownMenuItem>
+                              <WavMenuItem state={wavStateFor(v.id)} onSelect={() => onWav(v)} />
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        )}
+                        {/* Casillero como el «Automático» de Creatividad: texto + círculo dorado; relleno cuando la versión es la activa */}
+                        <button
+                          type="button"
+                          role="checkbox"
+                          aria-checked={active}
+                          aria-label={active ? `Versión ${v.versionNumber} activa` : `Hacer activa la versión ${v.versionNumber}`}
+                          title={active ? 'Versión activa' : 'Hacer activa'}
+                          onClick={() => !active && access.canModify && activeVersionMutation.mutate(v.id)}
+                          disabled={!access.canModify || (!active && activeVersionMutation.isPending)}
+                          className={`flex shrink-0 items-center gap-2 text-xs font-medium focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground disabled:cursor-not-allowed disabled:opacity-60 ${active ? 'cursor-default' : ''}`}
+                        >
+                          <span
+                            aria-hidden
+                            className={`flex size-7 shrink-0 items-center justify-center rounded-full border-[1.5px] border-gold transition-colors @[34rem]:size-8 ${active ? 'bg-gold text-[#131C33]' : 'bg-transparent text-gold'}`}
+                          >
+                            {activeVersionMutation.isPending && activeVersionMutation.variables === v.id ? (
+                              <Loader2 className="h-4 w-4 animate-spin" />
+                            ) : (
+                              <Check className={`h-4 w-4 ${active ? '' : 'opacity-40'}`} strokeWidth={3} />
+                            )}
+                          </span>
+                        </button>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+          </section>
+        )}
+        </div>
+
+        </div>
       </section>
+      </div>
 
       {/* ── Remix: «Hecho a partir de» (atribución permanente al origen directo). El contador de remixes va con los demás contadores. ── */}
       <RemixAttribution origin={song.origin} />
 
       {/* ── Descripción de la canción («Editar detalles»): bloque discreto, solo si existe (también en el detalle público) ── */}
-      {hasText(song.description) && (
+      {isOwner && hasText(song.description) && (
         <section aria-label="Descripción de la canción">
           <p className="max-w-3xl whitespace-pre-line break-words rounded-2xl border border-border/70 bg-surface-2/40 px-4 py-3 text-sm leading-relaxed text-muted-foreground">
             {song.description.trim()}
           </p>
-        </section>
-      )}
-
-      {/* ── Comunidad: autor (canciones ajenas) + reacciones y cola (canciones públicas) ── */}
-      {access.showCommunity && (
-        <section className="space-y-4" aria-label="Autor y reacciones">
-          {!isOwner && community && (
-            <div className="flex items-center gap-3">
-              <Link
-                to={`/user/${encodeURIComponent(community.author.id)}`}
-                aria-label={`Ver perfil de ${community.author.name}`}
-                tabIndex={-1}
-                className="shrink-0 rounded-full bg-gold p-[2px] transition-transform duration-200 ease-out hover:scale-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring motion-reduce:transition-none motion-reduce:hover:scale-100"
-              >
-                <AuthAvatar src={community.author.avatarUrl} name={community.author.name} className="h-10 w-10 border-2 border-background" />
-              </Link>
-              <div className="min-w-0 flex-1">
-                <Link
-                  to={`/user/${encodeURIComponent(community.author.id)}`}
-                  aria-label={`Ver perfil de ${community.author.name}`}
-                  className="block max-w-full truncate text-left text-sm font-semibold text-foreground transition-colors hover:text-amber-strong"
-                >
-                  {community.author.name}
-                </Link>
-                <p className="text-xs text-muted-foreground">{formatNumber(community.author.followersCount ?? 0)} seguidores</p>
-              </div>
-              {user?.id !== community.author.id && (
-                <Button
-                  size="sm"
-                  variant={community.viewerIsFollowing ? 'secondary' : 'default'}
-                  className="rounded-full max-sm:size-9 max-sm:px-0"
-                  aria-label={community.viewerIsFollowing ? `Dejar de seguir a ${community.author.name}` : `Seguir a ${community.author.name}`}
-                  disabled={followMutation.isPending}
-                  onClick={() => {
-                    if (!guard('Ingresá para seguir al creador', 'Creá tu cuenta para seguir a otros melodiosos.')) return;
-                    followMutation.mutate({ userId: community.author.id, follow: !community.viewerIsFollowing });
-                  }}
-                >
-                  {followMutation.isPending ? (
-                    <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
-                  ) : community.viewerIsFollowing ? (
-                    <UserCheck className="h-4 w-4" aria-hidden />
-                  ) : (
-                    <UserPlus className="h-4 w-4" aria-hidden />
-                  )}
-                  <span className="max-sm:sr-only">{community.viewerIsFollowing ? 'Siguiendo' : 'Seguir'}</span>
-                </Button>
-              )}
-            </div>
-          )}
-
-          <div className="flex flex-wrap items-center gap-2">
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              aria-pressed={viewerLiked}
-              aria-label={viewerLiked ? `Quitar me gusta de ${song.title}` : `Me gusta ${song.title}`}
-              onClick={() => onReact('LIKE')}
-              className={cn('rounded-full', viewerLiked && 'border-amber/60 bg-amber/10 text-amber-strong hover:bg-amber/15 hover:text-amber-strong')}
-            >
-              <Heart key={viewerLiked ? 'on' : 'off'} className={cn('h-4 w-4', viewerLiked && 'fill-current heart-pop')} aria-hidden />
-              <span className="tabular-nums">{formatNumber(likesCount)}</span>
-            </Button>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              aria-pressed={viewerDisliked}
-              aria-label={viewerDisliked ? `Quitar no me gusta de ${song.title}` : `No me gusta ${song.title}`}
-              onClick={() => onReact('DISLIKE')}
-              className={cn('rounded-full', viewerDisliked && 'border-foreground/30 bg-surface-2 text-foreground')}
-            >
-              <ThumbsDown className={cn('h-4 w-4', viewerDisliked && 'fill-current')} aria-hidden />
-              <span className="tabular-nums">{formatNumber(dislikesCount)}</span>
-            </Button>
-            {currentVersion?.audioUrl && (
-              <>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  title="Reproducir a continuación"
-                  aria-label={`Reproducir ${song.title} a continuación`}
-                  onClick={() => onQueue('next')}
-                  className="rounded-full text-muted-foreground hover:text-foreground"
-                >
-                  <ListStart className="h-4 w-4" aria-hidden />
-                </Button>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  title="Agregar a la cola"
-                  aria-label={`Agregar ${song.title} a la cola`}
-                  onClick={() => onQueue('end')}
-                  className="rounded-full text-muted-foreground hover:text-foreground"
-                >
-                  <ListEnd className="h-4 w-4" aria-hidden />
-                </Button>
-              </>
-            )}
-          </div>
         </section>
       )}
 
@@ -1656,7 +1870,7 @@ export function SongDetailView({ songId }: { songId: string }) {
         <Card className="rounded-cover border-border/70 bg-surface lg:col-span-2">
           <CardHeader className="relative pb-0">
             <CardTitle className="flex items-center gap-2 font-display text-lg font-bold">
-              <ListMusic className="h-5 w-5 text-amber-strong" aria-hidden /> Letra
+              <PlanetIcon tone="composition"><ListMusic className="h-4 w-4" /></PlanetIcon> Letra
             </CardTitle>
             {currentVersion?.lyricsSource && <CardDescription>{LYRICS_SOURCE_LABEL[currentVersion.lyricsSource] ?? ''}</CardDescription>}
             {currentVersion?.lyricsText && (
@@ -1672,7 +1886,7 @@ export function SongDetailView({ songId }: { songId: string }) {
           </CardHeader>
           <CardContent>
             {currentVersion?.lyricsText ? (
-              <LyricsBody text={currentVersion.lyricsText} />
+              <LyricsBody text={currentVersion.lyricsText} fillRef={rightColRef} />
             ) : (
               <div className="flex flex-col items-center gap-2 py-10 text-center">
                 <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-amber/10 text-amber-strong">
@@ -1684,73 +1898,96 @@ export function SongDetailView({ songId }: { songId: string }) {
           </CardContent>
         </Card>
 
-        <div className="space-y-4">
+        <div ref={rightColRef} className="space-y-4 lg:self-start">
           {isOwner && (generationQuery.isLoading || styleDetailQuery.isLoading) ? (
             <Skeleton className="h-44 rounded-cover" />
           ) : gen || !isOwner ? (
             <>
-            {/* Info de generación (costo, estado): solo para el dueño */}
-            {isOwner && gen && (
-            <Card className="h-fit rounded-cover border-border/70 bg-surface">
-              <CardHeader className="pb-0">
-                <CardTitle className="flex items-center gap-2 font-display text-lg font-bold">
-                  <Sparkles className="h-5 w-5 text-amber-strong" aria-hidden /> Info de generación
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-2.5 text-sm">
-                <div className="flex items-center justify-between gap-3">
-                  <span className="text-muted-foreground">Estado</span>
-                  <Badge variant="outline" className="border-amber/40 text-amber-strong">
-                    {GEN_STATUS_LABEL[gen.status] ?? gen.status}
-                  </Badge>
-                </div>
-                <div className="flex items-center justify-between gap-3">
-                  <span className="text-muted-foreground">Costo</span>
-                  <span className="font-medium">{gen.creditsCost > 0 ? `Costó ${gen.creditsCost} fichas` : 'Sin costo'}</span>
-                </div>
-                <div className="flex items-center justify-between gap-3">
-                  <span className="text-muted-foreground">Generada</span>
-                  <span className="font-medium">{formatRelative(gen.createdAt)}</span>
-                </div>
-              </CardContent>
-            </Card>
-            )}
+            {/* Creador (canciones de otras personas): arriba de «Estilo» */}
+          {access.showCommunity && !isOwner && community && (
+            <div className="@container flex flex-wrap items-center gap-x-3 gap-y-3 rounded-3xl border-[1.5px] border-border bg-[var(--m-input)] px-4 py-3">
+              <Link
+                to={`/user/${encodeURIComponent(community.author.id)}`}
+                aria-label={`Ver perfil de ${community.author.name}`}
+                tabIndex={-1}
+                className="shrink-0 rounded-full border-2 border-gold p-[2px] transition-transform duration-200 ease-out hover:scale-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring motion-reduce:transition-none motion-reduce:hover:scale-100"
+              >
+                <AuthAvatar src={community.author.avatarUrl} name={community.author.name} className="h-10 w-10" />
+              </Link>
+              <div className="min-w-0 flex-1 basis-28">
+                <Link
+                  to={`/user/${encodeURIComponent(community.author.id)}`}
+                  aria-label={`Ver perfil de ${community.author.name}`}
+                  className="block max-w-full truncate text-left text-[17px] font-bold text-foreground transition-colors hover:text-amber-strong"
+                >
+                  {community.author.name}
+                </Link>
+                <p className="text-[13px] text-muted-foreground">{formatNumber(community.author.followersCount ?? 0)} seguidores</p>
+              </div>
+              {user?.id !== community.author.id && (
+                <Button
+                  variant="outline"
+                  className={cn('min-h-11 w-full rounded-3xl border-[1.5px] px-5 text-[15px] font-bold @[19rem]:w-auto', community.viewerIsFollowing ? 'border-selected bg-selected text-on-selected hover:bg-selected/90 hover:text-on-selected' : 'border-line bg-transparent text-foreground hover:bg-foreground/10')}
+                  aria-label={community.viewerIsFollowing ? `Dejar de seguir a ${community.author.name}` : `Seguir a ${community.author.name}`}
+                  disabled={followMutation.isPending}
+                  onClick={() => {
+                    if (!guard('Ingresá para seguir al creador', 'Creá tu cuenta para seguir a otros melodiosos.')) return;
+                    followMutation.mutate({ userId: community.author.id, follow: !community.viewerIsFollowing });
+                  }}
+                >
+                  {followMutation.isPending ? (
+                    <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+                  ) : community.viewerIsFollowing ? (
+                    <UserCheck className="h-4 w-4" aria-hidden />
+                  ) : (
+                    <UserPlus className="h-4 w-4" aria-hidden />
+                  )}
+                  <span>{community.viewerIsFollowing ? 'Siguiendo' : 'Seguir'}</span>
+                </Button>
+              )}
+            </div>
+          )}
+            {/* Info de generación (solo dueño): arriba de «Estilo» */}
+            {genInfoCard}
             {(usedStyle.genres.length > 0 || usedStyle.description || usedStyle.vocal || usedStyle.excluded.length > 0) && (
               <Card className="h-fit rounded-cover border-border/70 bg-surface">
-                <CardHeader className="relative pb-0">
+                <CardHeader className="flex flex-row items-center justify-between gap-3 pb-0">
                   <CardTitle className="flex items-center gap-2 font-display text-lg font-bold">
-                    <Music4 className="h-5 w-5 text-amber-strong" aria-hidden /> Estilo
+                    <PlanetIcon tone="style"><Music4 className="h-4 w-4" /></PlanetIcon> Estilo
                   </CardTitle>
-                  <CardDescription>Estilos usados</CardDescription>
                   <Button
                     variant="ghost"
                     size="sm"
-                    className="absolute right-4 top-4 h-8 gap-1.5 rounded-full px-3 text-xs text-muted-foreground hover:text-foreground"
+                    className="h-8 shrink-0 gap-1.5 rounded-full px-3 text-xs text-muted-foreground hover:text-foreground"
                     onClick={() => void onCopyStyle()}
                   >
                     <Copy className="h-3.5 w-3.5" aria-hidden /> Copiar
                   </Button>
                 </CardHeader>
-                <CardContent className="space-y-3 text-sm">
-                  {(usedStyle.genres.length > 0 || usedStyle.vocal) && (
-                    <div className="flex flex-wrap gap-1.5">
-                      {usedStyle.genres.map((g) => (
-                        <Chip key={g} active>{cleanTag(g)}</Chip>
-                      ))}
-                      {usedStyle.vocal && <Chip>{usedStyle.vocal}</Chip>}
+                <CardContent className="text-sm">
+                  <CollapsibleBox label="Estilos usados">
+                    <div className="space-y-3">
+                      {(usedStyle.genres.length > 0 || usedStyle.vocal) && (
+                        <div className="flex flex-wrap gap-1.5">
+                          {usedStyle.genres.map((g) => (
+                            <Chip key={g} active>{cleanTag(g)}</Chip>
+                          ))}
+                          {usedStyle.vocal && <Chip>{usedStyle.vocal}</Chip>}
+                        </div>
+                      )}
+                      {usedStyle.description && <p className="whitespace-pre-line text-muted-foreground">{usedStyle.description}</p>}
+                      {usedStyle.excluded.length > 0 && (
+                        <div className="space-y-1.5">
+                          <p className="text-xs font-medium text-muted-foreground">Evitar</p>
+                          <div className="flex flex-wrap gap-1.5">
+                            {usedStyle.excluded.map((t) => (
+                              <Chip key={t}>{cleanTag(t)}</Chip>
+                            ))}
+                          </div>
+                        </div>
+                      )}
                     </div>
-                  )}
-                  {usedStyle.description && <p className="whitespace-pre-line text-muted-foreground">{usedStyle.description}</p>}
-                  {usedStyle.excluded.length > 0 && (
-                    <div className="space-y-1.5">
-                      <p className="text-xs font-medium text-muted-foreground">Evitar</p>
-                      <div className="flex flex-wrap gap-1.5">
-                        {usedStyle.excluded.map((t) => (
-                          <Chip key={t}>{cleanTag(t)}</Chip>
-                        ))}
-                      </div>
-                    </div>
-                  )}
+                  </CollapsibleBox>
                 </CardContent>
               </Card>
             )}
@@ -1763,112 +2000,57 @@ export function SongDetailView({ songId }: { songId: string }) {
               </CardContent>
             </Card>
           ) : null}
+
+        {/* ── Publicación (dueño): tarjeta con el mismo estilo que «Info de generación»; visibilidad, comentarios y remixes ── */}
+        {isOwner && access.canModify && (
+          <Card className="h-fit rounded-cover border-border/70 bg-surface" aria-label="Publicación">
+            <CardHeader className="pb-0">
+              <CardTitle className="flex items-center gap-2 font-display text-lg font-bold">
+                <PlanetIcon tone="voice"><Globe className="h-4 w-4" /></PlanetIcon> Publicación
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="-mt-2 flex flex-col gap-0.5 pt-0">
+                <label className="flex min-h-10 w-full cursor-pointer items-center gap-3 py-1">
+                  <span className="flex min-w-0 flex-1 flex-col gap-0.5 text-left">
+                    <b className="text-[15px] font-bold">Visibilidad pública</b>
+                  </span>
+                  <Switch
+                    checked={song.visibility === 'PUBLIC'}
+                    onCheckedChange={(val) => visibilityMutation.mutate({ visibility: val ? 'PUBLIC' : 'PRIVATE' })}
+                    disabled={visibilityMutation.isPending}
+                    aria-label="Visibilidad pública"
+                    className="data-[state=checked]:border-gold data-[state=checked]:bg-gold dark:data-[state=checked]:[&>span]:bg-[#131C33]"
+                  />
+                </label>
+                <label className="flex min-h-10 w-full cursor-pointer items-center gap-3 py-1 border-t border-separator">
+                  <span className="flex min-w-0 flex-1 flex-col gap-0.5 text-left">
+                    <b className="text-[15px] font-bold">Permitir comentarios</b>
+                  </span>
+                  <Switch
+                    checked={song.allowComments}
+                    onCheckedChange={(val) => visibilityMutation.mutate({ allowComments: val })}
+                    disabled={visibilityMutation.isPending}
+                    aria-label="Permitir comentarios"
+                    className="data-[state=checked]:border-gold data-[state=checked]:bg-gold dark:data-[state=checked]:[&>span]:bg-[#131C33]"
+                  />
+                </label>
+                <label className="flex min-h-10 w-full cursor-pointer items-center gap-3 py-1 border-t border-separator">
+                  <span className="flex min-w-0 flex-1 flex-col gap-0.5 text-left">
+                    <b className="text-[15px] font-bold">Permitir Remixes</b>
+                  </span>
+                  <Switch
+                    checked={song.allowRemix === true}
+                    onCheckedChange={(val) => visibilityMutation.mutate({ allowRemix: val })}
+                    disabled={visibilityMutation.isPending}
+                    aria-label="Permitir Remixes"
+                    className="data-[state=checked]:border-gold data-[state=checked]:bg-gold dark:data-[state=checked]:[&>span]:bg-[#131C33]"
+                  />
+                </label>
+            </CardContent>
+          </Card>
+        )}
         </div>
       </div>
-
-      {/* ── Versiones (dueño) ── */}
-      {isOwner && (
-        <section className="space-y-4" aria-label="Versiones de la canción">
-          <SectionHeader
-            title="Versiones"
-            subtitle={versions.length > 0 ? `${versions.length} ${versions.length === 1 ? 'versión' : 'versiones'}` : undefined}
-          />
-          {/* Una cápsula por versión, como las de «Seguí creando» del inicio: pegadas al borde izquierdo, tinte terracota */}
-          <div className="-ml-4 grid w-[calc(100%+1rem)] gap-3 sm:-ml-6 sm:w-[calc(100%+1.5rem)] lg:grid-cols-2">
-              {versionsQuery.isLoading ? (
-                <LoadingRows count={2} />
-              ) : versionsQuery.isError ? (
-                <ErrorState message={toUserMessage(versionsQuery.error)} onRetry={() => void versionsQuery.refetch()} />
-              ) : versions.length === 0 ? (
-                <p className="py-6 text-center text-sm text-muted-foreground">Todavía no hay versiones de esta canción.</p>
-              ) : (
-                versions.map((v) => {
-                  const active = song.currentVersionId === v.id;
-                  const playing = Boolean(isPlaying && v.audioUrl && currentTrack?.audioUrl === resolveAudioUrl(v.audioUrl));
-                  return (
-                    <div
-                      key={v.id}
-                      className="flex min-h-[76px] items-center gap-3.5 rounded-r-[40px] bg-[var(--m-capsule-tint)] py-3 pr-5 pl-6 sm:pl-8 lg:max-xl:pr-4 lg:max-xl:pl-6"
-                    >
-                      {/* Igual que el botón de las filas de «De la comunidad» del inicio: círculo con borde, solo el ícono */}
-                      <button
-                        type="button"
-                        onClick={() => playVersion(v)}
-                        disabled={!v.audioUrl}
-                        aria-label={playing ? `Pausar versión ${v.versionNumber}` : `Escuchar versión ${v.versionNumber}`}
-                        title={playing ? 'Pausar' : 'Escuchar'}
-                        className={`flex size-11 shrink-0 items-center justify-center rounded-full border-[1.5px] transition-colors focus-visible:outline-2 focus-visible:outline-foreground disabled:cursor-not-allowed disabled:opacity-50 ${
-                          playing ? 'border-primary bg-primary text-primary-foreground' : 'border-line text-foreground hover:border-[#A5390A] hover:bg-[#A5390A]/40'
-                        }`}
-                      >
-                        {playing ? <Pause className="h-4 w-4 fill-current" aria-hidden /> : <Play className="h-4 w-4 translate-x-px fill-current" aria-hidden />}
-                      </button>
-                      <div className="min-w-0 flex-1">
-                        <span className="text-sm font-semibold">Versión {v.versionNumber}</span>
-                        <p className="mt-0.5 text-xs text-muted-foreground">
-                          {formatRelative(v.createdAt)}
-                          {v.genre && <> · {cleanTag(v.genre)}</>}
-                          {v.durationSec != null && <> · {formatDuration(v.durationSec)}</>}
-                        </p>
-                        {wavStatusText(wavFlow.phaseOf(v.id)) && (
-                          <p role="status" aria-live="polite" data-testid="wav-status" className="mt-0.5 flex items-center gap-1.5 text-xs text-[#A5390A]">
-                            <Loader2 className="h-3 w-3 animate-spin" aria-hidden /> {wavStatusText(wavFlow.phaseOf(v.id))}
-                          </p>
-                        )}
-                      </div>
-                      {/* Descarga de ESTA versión (MP3 / WAV): corresponde a la fila elegida, no a la versión activa. */}
-                      {v.audioUrl && access.canDownload && (
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <button
-                              type="button"
-                              aria-label={wavFlow.phaseOf(v.id) ? `Versión ${v.versionNumber}: preparando el WAV` : `Descargar la versión ${v.versionNumber}`}
-                              aria-busy={wavFlow.phaseOf(v.id) ? true : undefined}
-                              title={wavFlow.phaseOf(v.id) ? 'Preparando el WAV de esta versión' : 'Descargar esta versión'}
-                              className="flex size-9 shrink-0 items-center justify-center rounded-full border-[1.5px] border-line text-foreground transition-colors hover:border-[#A5390A] hover:bg-[#A5390A]/40 focus-visible:outline-2 focus-visible:outline-foreground"
-                            >
-                              {wavFlow.phaseOf(v.id) ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <Download className="h-4 w-4" aria-hidden />}
-                            </button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end">
-                            <DropdownMenuItem disabled={downloading || (!downloadState.allowed && !downloadGate.locked)} onClick={() => void onDownload('mp3', v)} title={downloadState.reason ?? downloadState.hint ?? 'Baja el MP3 de esta versión'} className={downloadGate.locked ? 'opacity-90' : undefined}>
-                              <Download className="h-4 w-4" aria-hidden />
-                              Descargar MP3
-                              <RequiredPlanBadge capability="DOWNLOAD_AUDIO" className="ml-auto" />
-                            </DropdownMenuItem>
-                            <WavMenuItem state={wavStateFor(v.id)} onSelect={() => onWav(v)} />
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                      )}
-                      {/* Casillero como el «Automático» de Creatividad: texto + círculo dorado; relleno cuando la versión es la activa */}
-                      <button
-                        type="button"
-                        role="checkbox"
-                        aria-checked={active}
-                        aria-label={active ? `Versión ${v.versionNumber} activa` : `Hacer activa la versión ${v.versionNumber}`}
-                        title={active ? 'Versión activa' : 'Hacer activa'}
-                        onClick={() => !active && access.canModify && activeVersionMutation.mutate(v.id)}
-                        disabled={!access.canModify || (!active && activeVersionMutation.isPending)}
-                        className={`flex shrink-0 items-center gap-2 text-xs font-medium focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground disabled:cursor-not-allowed disabled:opacity-60 ${active ? 'cursor-default' : ''}`}
-                      >
-                        <span
-                          aria-hidden
-                          className={`flex size-8 shrink-0 items-center justify-center rounded-full border-[1.5px] border-gold transition-colors ${active ? 'bg-gold text-[#131C33]' : 'bg-transparent text-gold'}`}
-                        >
-                          {activeVersionMutation.isPending && activeVersionMutation.variables === v.id ? (
-                            <Loader2 className="h-4 w-4 animate-spin" />
-                          ) : (
-                            <Check className={`h-4 w-4 ${active ? '' : 'opacity-40'}`} strokeWidth={3} />
-                          )}
-                        </span>
-                      </button>
-                    </div>
-                  );
-                })
-              )}
-            </div>
-        </section>
-      )}
 
       {/* ── Comunidad: comentarios o invitación a publicar ── */}
       {access.showCommunity ? (
@@ -1877,33 +2059,6 @@ export function SongDetailView({ songId }: { songId: string }) {
           currentUserId={user?.id}
           canModerate={isOwner}
           onReportComment={onReportComment}
-          action={
-            isOwner ? (
-              /* Los dos interruptores alineados a la izquierda entre sí; el grupo sigue a la derecha de la sección */
-              <div className="flex flex-col items-start gap-2">
-                <label className="flex cursor-pointer items-center gap-2.5 text-sm text-muted-foreground">
-                  <Switch
-                    checked={song.allowComments}
-                    onCheckedChange={(val) => visibilityMutation.mutate({ allowComments: val })}
-                    disabled={visibilityMutation.isPending}
-                    aria-label="Permitir comentarios"
-                    className="data-[state=checked]:border-gold data-[state=checked]:bg-gold dark:data-[state=checked]:[&>span]:bg-[#131C33]"
-                  />
-                  Permitir comentarios
-                </label>
-                <label className="flex cursor-pointer items-center gap-2.5 text-sm text-muted-foreground">
-                  <Switch
-                    checked={song.allowRemix === true}
-                    onCheckedChange={(val) => visibilityMutation.mutate({ allowRemix: val })}
-                    disabled={visibilityMutation.isPending}
-                    aria-label="Permitir Remixes"
-                    className="data-[state=checked]:border-gold data-[state=checked]:bg-gold dark:data-[state=checked]:[&>span]:bg-[#131C33]"
-                  />
-                  Permitir Remixes
-                </label>
-              </div>
-            ) : undefined
-          }
         />
       ) : access.canModify ? (
         <section className="space-y-4" aria-label="Comentarios">

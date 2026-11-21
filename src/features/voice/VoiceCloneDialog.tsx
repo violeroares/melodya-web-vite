@@ -18,7 +18,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
-  AudioLines, Check, CheckCircle2, CircleAlert, Loader2, Mic2, Music4, Pencil, ShieldCheck,
+  AudioLines, Check, CheckCircle2, CircleAlert, Loader2, Lock, Mic, Music4, Pencil, ShieldCheck, Trash2,
   Sparkles, Upload, Volume2, Waves,
   Play,
   Pause,
@@ -33,7 +33,7 @@ import { navigate } from '@/lib/router';
 import { readAudioDuration } from './audio-duration';
 import {
   awaitPhrase, buildVerifyBody, closeNotice, creationOutcome, failedBeforeVoice, phraseOutcome, pollSession, resolveDurationSec, sessionErrorMessage,
-  isRecordingPending, findActiveSession, PHRASE_HINT, PHRASE_INSTRUCTION, PHRASE_RETRY_TIP, resumePhase, SKILL_CHOICES, SKILL_SKIP_NOTE,
+  isRecordingPending, findActiveSession, PHRASE_INSTRUCTION, PHRASE_RETRY_TIP, resumePhase, SKILL_CHOICES, SKILL_SKIP_NOTE,
   uploadPhraseReading, type SkillChoice,
 } from './voice-session-flow';
 import { useAuthStore } from '@/stores/auth';
@@ -410,8 +410,8 @@ export function VoiceCloneDialog({
             siempre se vean, en mobile y con el modal angosto) */}
         <div className="border-b border-border px-5 py-4 sm:px-6">
           <div className="flex items-center gap-3 pr-12">
-            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full gradient-warm text-primary-foreground" aria-hidden>
-              <Mic2 className="h-5 w-5" />
+            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#F0A44B] text-[#131C33]" aria-hidden>
+              <Mic className="h-5 w-5" />
             </span>
             <div className="min-w-0 flex-1">
               <DialogTitle className="font-display truncate text-xl font-bold">{isRecreate ? 'Recrear voz' : 'Crear voz'}</DialogTitle>
@@ -420,29 +420,19 @@ export function VoiceCloneDialog({
               </DialogDescription>
             </div>
           </div>
-          {/* Paso a paso: círculos numerados con línea de unión (nuestro estilo) y la tipografía de los pasos del prototipo (etiqueta chica en mayúsculas con separación entre letras) */}
-          <ol className="mt-4 grid grid-cols-4 gap-2" aria-label="Progreso">
+          {/* Paso a paso como `.csteps` de design-V2 (Crear · Creá tu voz): una barra de 3 px por paso, en el color del planeta Voz hasta el paso actual,
+              con la etiqueta debajo en 13 px (la del paso actual en el color de texto, las demás en el secundario). */}
+          <ol className="mt-4 flex gap-1.5" aria-label="Progreso">
             {PHASE_STEPS.map((s, i) => {
-              const done = i < idx;
+              const reached = i <= idx;
               const current = i === idx;
               return (
-                <li key={s.key} aria-current={current ? 'step' : undefined} className="flex min-w-0 flex-col items-center gap-1.5 sm:flex-row sm:gap-2">
-                  <span
-                    className={cn(
-                      'flex size-6 shrink-0 items-center justify-center rounded-full text-xs font-bold',
-                      current ? 'bg-primary text-primary-foreground' : done ? 'bg-success text-background' : 'border-[1.5px] border-line text-muted-foreground'
-                    )}
-                    aria-hidden
-                  >
-                    {done ? <Check className="h-3.5 w-3.5" strokeWidth={3} /> : i + 1}
-                  </span>
-                  <span className={cn('truncate text-[11.5px] tracking-[0.08em] uppercase', current ? 'font-bold text-label' : done ? 'font-semibold text-foreground' : 'font-medium text-muted-foreground')}>
+                <li key={s.key} aria-current={current ? 'step' : undefined} className={cn('flex min-w-0 flex-1 flex-col gap-2 text-[13px] leading-[1.35]', current ? 'text-foreground' : 'text-muted-foreground')}>
+                  <span aria-hidden className={cn('h-[3px] rounded-sm', reached ? 'bg-[#F0A44B]' : 'bg-faint')} />
+                  <span className="truncate">
                     {s.label}
-                    <span className="sr-only">{current ? ' (paso actual)' : done ? ' (completado)' : ''}</span>
+                    <span className="sr-only">{current ? ' (paso actual)' : i < idx ? ' (completado)' : ''}</span>
                   </span>
-                  {i < PHASE_STEPS.length - 1 && (
-                    <span className={cn('ml-1 hidden h-px flex-1 rounded-full sm:block', done ? 'bg-success' : 'bg-faint')} aria-hidden />
-                  )}
                 </li>
               );
             })}
@@ -695,35 +685,53 @@ function ConsentPanel({ onAccepted }: { onAccepted: () => void }) {
     }
   };
 
+  /* Como «Creá tu voz · autorización» de design-V2: una línea de contexto, la tarjeta «Antes de empezar» con tres puntos (círculo de 32 px en el color del
+     planeta Voz al 22 %), el compromiso en 13 px y el check circular dorado de 28 px. El texto legal es el de siempre. */
+  const KEYS: Array<{ icon: React.ElementType; title: string; text: string }> = [
+    { icon: Mic, title: 'Solo para tus canciones.', text: 'Melodya procesa tus muestras para crear una versión sintética de tu voz.' },
+    { icon: Lock, title: 'No se comparte.', text: 'No se entrena a otras voces con tus muestras.' },
+    { icon: Trash2, title: 'Podés revocarlo.', text: 'Eliminá tus muestras desde la biblioteca cuando quieras.' },
+  ];
   return (
     <div className="space-y-5">
-      {/* Cápsula como «Antes de crear, falta resolver» de Materiales: pegada al borde izquierdo, tinte terracota, título en la fuente de títulos */}
-      <div className="voice-cap rounded-r-[40px] bg-[var(--m-capsule-tint)] py-3.5 pr-5 pl-5 text-foreground sm:pl-6">
-        <h3 className="flex items-center gap-2 font-display text-base font-bold">
-          <ShieldCheck className="h-4 w-4 shrink-0" aria-hidden />
-          Antes de empezar: autorización de uso de voz
-        </h3>
-        <p className="mt-0.5 text-[13px] leading-snug text-muted-foreground">
+      <p className="text-base leading-[1.4] text-muted-foreground">Tu voz es un dato personal. Se acepta una sola vez para tu cuenta.</p>
+      <div className="flex flex-col gap-2 rounded-3xl border-[1.5px] border-border bg-[var(--m-input)] px-[18px] py-4 dark:bg-[color-mix(in_srgb,var(--m-foreground)_6%,var(--m-input))]">
+        <h3 className="font-display text-base font-bold">Antes de empezar</h3>
+        <ul className="flex flex-col gap-3">
+          {KEYS.map(({ icon: Icon, title, text }) => (
+            <li key={title} className="flex items-start gap-3 text-[13px] leading-[1.35] text-muted-foreground">
+              <span aria-hidden className="flex size-8 shrink-0 items-center justify-center rounded-full bg-[color-mix(in_srgb,#F0A44B_22%,transparent)] text-[#F0A44B]">
+                <Icon className="h-[18px] w-[18px]" />
+              </span>
+              <span><b className="block text-[15px] font-semibold leading-[1.3] text-foreground">{title}</b>{text}</span>
+            </li>
+          ))}
+        </ul>
+        <p className="text-[13px] leading-[1.35] text-muted-foreground">
           Entendés que la creación de una voz implica el procesamiento de datos relacionados con tu voz
           que pueden considerarse información biométrica, y dás tu consentimiento para que Melodya los
           recopile y procese de acuerdo con los Términos de servicio y la Política de privacidad.
         </p>
       </div>
-      <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-border/70 bg-background/40 p-3 text-sm leading-relaxed">
-        <Checkbox checked={checked} onCheckedChange={(v) => setChecked(v === true)} className="mt-0.5 rounded-full" aria-label="Aceptar autorización" />
-        <span className="text-foreground/90">
-          Acepto la autorización de uso de voz y confirmo que el audio que suba o grabe contiene
-          exclusivamente mi propia voz.
-        </span>
+      <label className="flex cursor-pointer items-center gap-2.5 text-[15px] font-semibold leading-snug">
+        <Checkbox
+          checked={checked}
+          onCheckedChange={(v) => setChecked(v === true)}
+          aria-label="Aceptar autorización"
+          className="size-7 rounded-full border-2 border-gold bg-transparent data-[state=checked]:border-gold data-[state=checked]:bg-gold data-[state=checked]:text-on-gold [&_svg]:size-4 [&_svg]:stroke-[3]"
+        />
+        <span>Acepto la autorización de uso de voz y confirmo que el audio que suba o grabe contiene exclusivamente mi propia voz.</span>
       </label>
-      <Button
-        className="w-full rounded-full bg-primary font-bold text-[#131C33] hover:bg-primary hover:text-[#131C33] hover:brightness-95 disabled:bg-foreground/10 disabled:bg-none disabled:text-muted-foreground disabled:opacity-100 sm:w-auto"
-        disabled={!checked || busy}
-        onClick={() => void accept()}
-      >
-        {busy ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <ShieldCheck className="h-4 w-4" aria-hidden />}
-        Aceptar y continuar
-      </Button>
+      <div className="flex justify-center">
+        <Button
+          className="rounded-full bg-primary font-bold text-[#131C33] hover:bg-primary hover:text-[#131C33] hover:brightness-95 disabled:bg-foreground/10 disabled:bg-none disabled:text-muted-foreground disabled:opacity-100"
+          disabled={!checked || busy}
+          onClick={() => void accept()}
+        >
+          {busy ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <ShieldCheck className="h-4 w-4" aria-hidden />}
+          Aceptar y continuar
+        </Button>
+      </div>
     </div>
   );
 }
@@ -829,16 +837,16 @@ function PhrasePanel({
 
   return (
     <div className="space-y-5">
-      <div className="rounded-2xl border border-amber/40 bg-amber/10 p-4 sm:p-5">
-        <p className="flex items-center gap-1.5 text-xs font-semibold tracking-wide text-amber-strong uppercase">
-          <Volume2 className="h-3.5 w-3.5" aria-hidden /> Necesitamos verificar que sos vos
+      {/* Como la pantalla «Creá tu voz · frase · verificación» de design-V2: la instrucción en 16 px secundario y la frase en una tarjeta
+          (`.phrase`: fondo de campo, borde de 1,5 px, esquinas 20/20/6/6, Bricolage 22/700 con interlineado 1,35 y 16/18 de relleno) */}
+      <div className="space-y-2">
+        <p className="flex items-center gap-1.5 font-display text-base font-bold">
+          <Volume2 className="h-4 w-4 shrink-0 text-gold" aria-hidden /> Necesitamos verificar que sos vos
         </p>
-        <p className="mt-1 text-sm leading-relaxed text-foreground/90">
-          {PHRASE_INSTRUCTION}
-        </p>
-        <p className="mt-2 font-display text-xl leading-snug text-foreground sm:text-2xl">“{phrase}”</p>
+        <p className="text-base leading-[1.4] text-muted-foreground">{PHRASE_INSTRUCTION}</p>
       </div>
-      <RecordPanel minSec={3} disabled={busy} onFile={onFile} onPendingChange={onPendingChange} hint={PHRASE_HINT} />
+      <p className="rounded-[20px_20px_6px_6px] border-[1.5px] border-line bg-[var(--m-input)] px-[18px] py-4 font-display text-[22px] leading-[1.35] font-bold text-foreground">“{phrase}”</p>
+      <RecordPanel minSec={3} disabled={busy} onFile={onFile} onPendingChange={onPendingChange} hideTitle />
       <UploadPanel disabled={busy} onFile={onFile} label="O subí la grabación de la frase" />
       {busy && (
         <p className="flex items-center justify-center gap-2 text-sm text-muted-foreground">
@@ -851,47 +859,30 @@ function PhrasePanel({
 
 /* ───────────────────── Paso 4: detalles + skill ───────────────────── */
 
-/* Icono y color de cada nivel (mismo estilo que los botones de «¿Ya tenés una letra?» del Estudio de letras: pastilla con círculo de color) */
-const SKILL_LOOK: Record<string, { icon: LucideIcon; tone: string }> = {
-  BEGINNER: { icon: Sprout, tone: 'bg-primary text-[#131C33]' },
-  INTERMEDIATE: { icon: Music4, tone: 'bg-gold text-[#131C33]' },
-  ADVANCED: { icon: Mic2, tone: 'bg-voice text-on-voice' },
-  PROFESSIONAL: { icon: Star, tone: 'bg-primary text-[#131C33]' },
-  '': { icon: SkipForward, tone: 'bg-foreground/15 text-foreground' },
-};
+/* «Último paso» de design-V2 (Crear · Creá tu voz): «¿Cómo cantás?» con chips (los de siempre: 40 px, el elegido en `--m-selected`), el título «Detalles de tu voz» en
+   Bricolage 20/700 y los campos como píldoras de 56 px (28 px de radio, borde `--m-border`) con la etiqueta en 14 px negrita arriba. */
+/** Ícono de cada nivel: aparece delante de la palabra cuando el chip está elegido. */
+const SKILL_ICONS: Record<string, LucideIcon> = { BEGINNER: Sprout, INTERMEDIATE: Music4, ADVANCED: Mic, PROFESSIONAL: Star, '': SkipForward };
 
 function SkillSurvey({ value, onChange }: { value: SkillChoice; onChange: (v: SkillChoice) => void }) {
+  const picked = SKILL_CHOICES.find((o) => o.value === value && o.value !== '');
   return (
-    <div>
-      <h3 className="font-display text-xl font-bold leading-tight">Una pregunta rápida mientras preparamos todo</h3>
-      <p className="mt-0.5 text-sm text-muted-foreground">¿Cómo describirías tu forma de cantar?</p>
-      <div className="mt-3 grid gap-2 sm:grid-cols-2">
+    <div className="flex flex-col gap-2">
+      <h3 className="font-display text-xl font-bold leading-[1.2]">Una pregunta rápida mientras preparamos todo</h3>
+      <p className="text-sm leading-[1.3] font-bold">¿Cómo describirías tu forma de cantar? <span className="ml-1 font-normal text-muted-foreground">(opcional)</span></p>
+      <div className="flex flex-wrap gap-2" role="group" aria-label="Nivel de canto">
         {SKILL_CHOICES.map((opt) => {
-          const look = SKILL_LOOK[opt.value] ?? SKILL_LOOK[''];
+          const Icon = SKILL_ICONS[opt.value] ?? SkipForward;
           const on = value === opt.value;
           return (
-            <button
-              key={opt.value || 'skip'}
-              type="button"
-              onClick={() => onChange(opt.value)}
-              aria-pressed={on}
-              className={cn(
-                'flex h-auto min-h-11 w-full min-w-0 items-center gap-2 rounded-full border p-1.5 pr-4 text-left transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground',
-                on ? 'border-primary bg-primary text-[#131C33]' : 'border-border/70 bg-surface-2/40 hover:border-amber/40 hover:bg-surface-2',
-              )}
-            >
-              <span aria-hidden className={cn('flex size-8 shrink-0 items-center justify-center rounded-full', on ? 'bg-[#131C33] text-primary' : look.tone)}>
-                <look.icon className="h-4 w-4" />
-              </span>
-              <span className="min-w-0 flex-1 leading-tight">
-                <span className="block text-sm font-bold">{opt.title}</span>
-                <span className={cn('block text-xs', on ? 'text-[#131C33]/80' : 'text-muted-foreground')}>{opt.hint}</span>
-              </span>
-            </button>
+            <Chip key={opt.value || 'skip'} active={on} onClick={() => onChange(opt.value)} title={opt.hint}>
+              {on && <Icon className="h-4 w-4 shrink-0" aria-hidden />}
+              {opt.title}
+            </Chip>
           );
         })}
       </div>
-      <p className="mt-2 text-xs text-muted-foreground">{SKILL_SKIP_NOTE}</p>
+      <p className="min-h-[1.4em] text-base leading-[1.4] font-bold text-lyric-tag dark:text-gold" aria-live="polite">{picked ? picked.hint : <>{SKILL_SKIP_NOTE}</>}</p>
     </div>
   );
 }
@@ -906,36 +897,42 @@ function DetailsForm({
   description: string;
   setDescription: (v: string) => void;
 }) {
+  const label = 'text-sm leading-[1.3] font-bold';
+  const pill = 'h-14 rounded-[28px] border-border px-5 text-base font-normal';
   return (
-    <div className="space-y-4">
-      <h3 className="font-display text-xl font-bold leading-tight">Detalles de tu voz</h3>
-      <div className="space-y-1.5">
-        <Label htmlFor="voice-name" className="text-sm font-medium">Nombra esta voz</Label>
-        <Input
-          id="voice-name"
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          placeholder="Ej: Mi voz principal"
-          maxLength={100}
-          className="rounded-xl"
-        />
+    <div className="flex flex-col gap-4">
+      <h3 className="font-display text-xl font-bold leading-[1.2]">Detalles de tu voz</h3>
+      <div className="flex flex-col gap-2">
+        <Label htmlFor="voice-name" className={label}>Nombra esta voz</Label>
+        <div className="relative">
+          <Input
+            id="voice-name"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="Ej: Mi voz principal"
+            maxLength={100}
+            className={cn(pill, 'pr-16')}
+          />
+          <span aria-hidden className="pointer-events-none absolute top-1/2 right-5 -translate-y-1/2 text-[12.5px] text-muted-foreground tabular-nums">{name.length}/100</span>
+        </div>
+        <p className="text-[13px] leading-[1.35] text-muted-foreground">Así la vas a ver en Voz y en tu Biblioteca.</p>
       </div>
-      <div className="space-y-1.5">
-        <Label htmlFor="voice-tags" className="text-sm font-medium">
-          Etiquetas de estilo <span className="font-normal text-muted-foreground">(opcional)</span>
+      <div className="flex flex-col gap-2">
+        <Label htmlFor="voice-tags" className={label}>
+          Etiquetas de estilo <span className="ml-1 font-normal text-muted-foreground">(opcional)</span>
         </Label>
         <Input
           id="voice-tags"
           value={tagsInput}
           onChange={(e) => setTagsInput(e.target.value)}
           placeholder="Ej: pop, funk, balada (separadas por comas)"
-          className="rounded-xl"
+          className={pill}
         />
-        <p className="text-xs text-muted-foreground">Le dicen a Melodya cómo pensás usar la voz (máx. 8 etiquetas).</p>
+        <p className="text-[13px] leading-[1.35] text-muted-foreground">Le dicen a Melodya cómo pensás usar la voz (máx. 8 etiquetas).</p>
       </div>
-      <div className="space-y-1.5">
-        <Label htmlFor="voice-desc" className="text-sm font-medium">
-          Descripción <span className="font-normal text-muted-foreground">(opcional)</span>
+      <div className="flex flex-col gap-2">
+        <Label htmlFor="voice-desc" className={label}>
+          Descripción <span className="ml-1 font-normal text-muted-foreground">(opcional)</span>
         </Label>
         <CanvasTextarea
           id="voice-desc"
@@ -953,15 +950,17 @@ function DetailsForm({
 /* ───────────────────── Paso 5a: creando ───────────────────── */
 
 /* Núcleo girando como el de «Melodya escribiendo» del prototipo (design-V2): aro tenue con un arco dorado que da vueltas y, al centro, el círculo de voz con el icono del micrófono. */
-function VoiceCore({ icon: Icon = Mic2, spin = true, iconClassName = 'text-gold' }: { icon?: LucideIcon; spin?: boolean; iconClassName?: string }) {
+function VoiceCore({ icon: Icon = Mic, spin = true, iconClassName }: { icon?: LucideIcon; spin?: boolean; iconClassName?: string }) {
+  // Con el micrófono del planeta Voz el círculo del centro lleva su color (#F0A44B) y el ícono va en azul de marca
+  const planet = Icon === Mic;
   return (
     <span aria-hidden className="relative mx-auto block size-24 shrink-0">
       <svg className={cn('absolute inset-0 size-full', spin && 'animate-spin motion-reduce:animate-none')} style={spin ? { animationDuration: '2.4s' } : undefined} viewBox="0 0 96 96" fill="none">
         <circle cx="48" cy="48" r="44" stroke="var(--m-faint)" strokeWidth="3" />
         {spin && <circle cx="48" cy="48" r="44" stroke="var(--m-gold)" strokeWidth="3" strokeLinecap="round" strokeDasharray="77 200" />}
       </svg>
-      <span className="absolute inset-[21%] flex items-center justify-center rounded-full bg-voice">
-        <Icon className={cn('h-[26px] w-[26px]', iconClassName)} />
+      <span className={cn('absolute inset-[21%] flex items-center justify-center rounded-full', planet ? 'bg-[#F0A44B]' : 'bg-voice')}>
+        <Icon className={cn('h-[26px] w-[26px]', iconClassName ?? (planet ? 'text-[#131C33]' : 'text-gold'))} />
       </span>
     </span>
   );
@@ -1009,20 +1008,22 @@ function AvatarPanel({
 
   return (
     <div className="space-y-6">
-      {/* Cápsula como «Seguí creando» del inicio: pegada al borde izquierdo, tinte terracota, título en la fuente de títulos */}
-      <div className="voice-cap flex items-center gap-3 rounded-r-[40px] bg-[var(--m-capsule-tint)] py-3.5 pr-5 pl-5 text-foreground sm:pl-6">
-        <span aria-hidden className="flex size-11 shrink-0 items-center justify-center rounded-full bg-gold text-[#131C33]">
-          <CheckCircle2 className="h-6 w-6" />
+      {/* «Creá tu voz · lista» de design-V2: todo centrado y apilado — círculo de 64 px en el color del planeta Voz con el tilde en azul de marca, el título
+          (Bricolage 700) y el texto en el secundario, uno debajo del otro */}
+      <div className="flex flex-col items-center gap-3 text-center">
+        <span aria-hidden className="flex size-16 shrink-0 items-center justify-center rounded-full bg-[#F0A44B] text-[#131C33]">
+          <Check className="h-7 w-7" strokeWidth={2.5} />
         </span>
-        <div className="min-w-0">
-          <p className="font-display text-base font-bold">¡Tu voz está lista!</p>
-          <p className="mt-0.5 text-[13px] leading-snug text-muted-foreground">
+        <div className="flex min-w-0 flex-col items-center gap-0.5">
+          <h2 className="font-display text-xl leading-[1.2] font-bold tracking-[-0.01em]">¡Tu voz está lista!</h2>
+          <p className="text-[13px] leading-[1.35] text-muted-foreground">
             “{voice.name}” ya está disponible para tus canciones. Si querés, poné una foto de perfil a la voz.
           </p>
         </div>
       </div>
 
-      <div className="flex flex-col items-center gap-4 sm:flex-row sm:items-center">
+      {/* Todo junto en una tarjeta como la de las voces de «Tu propia voz» (esquinas 28/28/14/14, borde y fondo de campo) */}
+      <div className="flex items-center gap-4 rounded-[28px_28px_14px_14px] border-[1.5px] border-border bg-[var(--m-input)] px-3.5 py-3.5">
         {/* Avatar como el de los creadores de la comunidad: foto circular con un aro dorado separado por un hueco del color del fondo */}
         <div className="shrink-0 p-2">
           <button
@@ -1041,16 +1042,16 @@ function AvatarPanel({
             )}
           </button>
         </div>
-        <div className="min-w-0 flex-1 space-y-2 text-center sm:text-left">
+        <div className="min-w-0 flex-1 space-y-2 text-left">
           {/* Nombre y etiquetas en la misma fila: las etiquetas van al lado, con su contorno */}
-          <div className="flex flex-wrap items-center justify-center gap-2 sm:justify-start">
-            <p className="text-sm font-semibold">{voice.name}</p>
+          <div className="flex flex-wrap items-center gap-2">
+            <p className="font-display text-base font-bold">{voice.name}</p>
             {voice.tags?.map((t) => (
-              <Chip key={t} className="px-2.5 py-1 text-[11px]">{t}</Chip>
+              <Chip key={t}>{t}</Chip>
             ))}
           </div>
-          {voice.description && <p className="text-xs leading-relaxed text-muted-foreground">{voice.description}</p>}
-          <p className="text-xs leading-relaxed text-muted-foreground">
+          {voice.description && <p className="text-[13px] leading-[1.35] text-muted-foreground">{voice.description}</p>}
+          <p className="text-[13px] leading-[1.35] text-muted-foreground">
             JPG, PNG o WEBP de hasta 5 MB. Opcional: podés dejarla sin foto y cambiarla después.
           </p>
         </div>
@@ -1143,12 +1144,14 @@ function ReviewPlayer({ src, fallbackSec }: { src: string; fallbackSec: number }
 }
 
 export function RecordPanel({
-  minSec, disabled, onFile, hint, onPendingChange,
+  minSec, disabled, onFile, hint, hideTitle, onPendingChange,
 }: {
   minSec: number;
   disabled: boolean;
   onFile: (f: File, recordedSec?: number) => void;
   hint?: string;
+  /** Oculta «Grabá con tu micrófono» y la leyenda de abajo (el paso de la frase ya tiene sus propios textos). */
+  hideTitle?: boolean;
   /** Avisa si hay una toma válida sin enviar (al desmontarse avisa que ya no). */
   onPendingChange?: (pending: boolean) => void;
 }) {
@@ -1166,10 +1169,12 @@ export function RecordPanel({
   return (
     <div className="space-y-3 py-2">
       <div className="flex flex-col items-center gap-2 text-center sm:flex-row sm:flex-wrap sm:justify-between sm:gap-3 sm:text-left">
-        <div className="min-w-0">
-          <p className="font-display text-xl font-bold">{recording ? 'Grabando tu voz' : 'Grabá con tu micrófono'}</p>
-          {hint && !recording && <p className="text-sm text-muted-foreground">{hint}</p>}
-        </div>
+        {!hideTitle && (
+          <div className="min-w-0">
+            <p className="font-display text-[22px] leading-[1.2] font-bold">{recording ? 'Grabando tu voz' : 'Grabá con tu micrófono'}</p>
+            {hint && !recording && <p className="text-sm text-muted-foreground">{hint}</p>}
+          </div>
+        )}
         {/* Selector de micrófono (solo con más de uno y sin grabar) */}
         {rec.devices.length > 1 && !recording && rec.state !== 'ready' && (
           <Select value={rec.deviceId} onValueChange={rec.setDeviceId}>
@@ -1197,12 +1202,12 @@ export function RecordPanel({
       {rec.state !== 'ready' ? (
         <div className="flex flex-col items-center gap-4">
           {/* Botón principal: círculo de 150 px, con pulsos al grabar y anillo punteado en reposo */}
-          <div className="relative flex h-[220px] w-full items-center justify-center">
+          <div className="relative flex h-[260px] w-full items-center justify-center">
             {recording ? (
               <>
-                <span aria-hidden className="absolute size-[200px] rounded-full border-2 border-primary/50 motion-safe:animate-ping motion-reduce:hidden" style={{ animationDuration: '2.7s' }} />
-                <span aria-hidden className="absolute size-[200px] rounded-full border-2 border-primary/50 motion-safe:animate-ping motion-reduce:hidden" style={{ animationDuration: '2.7s', animationDelay: '0.9s' }} />
-                <span aria-hidden className="absolute size-[200px] rounded-full border-2 border-primary/50 motion-safe:animate-ping motion-reduce:hidden" style={{ animationDuration: '2.7s', animationDelay: '1.8s' }} />
+                <span aria-hidden className="rg-pulse absolute size-[200px] rounded-full border-2 border-primary" />
+                <span aria-hidden className="rg-pulse absolute size-[200px] rounded-full border-2 border-primary" style={{ animationDelay: '0.9s' }} />
+                <span aria-hidden className="rg-pulse absolute size-[200px] rounded-full border-2 border-primary" style={{ animationDelay: '1.8s' }} />
               </>
             ) : (
               <span aria-hidden className="absolute size-[200px] rounded-full border-[1.5px] border-dashed border-line" />
@@ -1225,7 +1230,7 @@ export function RecordPanel({
                 aria-label="Empezar a grabar"
                 className="relative flex size-[150px] items-center justify-center rounded-full bg-primary text-[#131C33] transition-transform active:scale-95 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-foreground disabled:opacity-60"
               >
-                {rec.state === 'requesting' ? <Loader2 className="h-12 w-12 animate-spin" aria-hidden /> : <Mic2 className="h-[52px] w-[52px]" aria-hidden />}
+                {rec.state === 'requesting' ? <Loader2 className="h-12 w-12 animate-spin" aria-hidden /> : <Mic className="h-[52px] w-[52px]" aria-hidden />}
               </button>
             )}
           </div>
@@ -1238,17 +1243,17 @@ export function RecordPanel({
             <span className="mt-1 block text-sm text-muted-foreground">{recording ? 'Tocá para terminar' : 'Tocá para grabar'}</span>
           </div>
 
-          {/* Barras de onda: siguen el nivel del micrófono al grabar; en reposo quedan quietas y tenues */}
-          <span className="flex h-12 w-full max-w-sm items-center justify-between" aria-hidden>
+          {/* Barras de onda (design-V2 · `.rg-wave`): 30 barras de 5 px, 80 px de alto y 4 px de separación en el naranja de acento. Al grabar cada una late sola
+              (rgeq, 1,1 s con su propio retraso) y el nivel del micrófono sube o baja su amplitud; en reposo quedan bajas, quietas y tenues. */}
+          <span className="mt-2 flex h-20 items-center justify-center gap-1" aria-hidden>
             {Array.from({ length: 30 }).map((_, i) => {
               const base = 0.25 + 0.75 * Math.abs(Math.sin(i * 1.7) * Math.cos(i * 0.6));
-              if (!recording) return <span key={i} className="w-[3px] rounded-full bg-foreground/25" style={{ height: 6 + base * 16 }} />;
-              // Al grabar cada barra late sola (animación CSS) y el nivel del micrófono sube o baja su amplitud
+              if (!recording) return <span key={i} className="block h-full w-[5px] rounded-[3px] bg-muted-foreground opacity-60" style={{ transform: 'scaleY(0.15)' }} />;
               const m = Math.max(0.18, Math.min(1, rec.level * 1.4 + base * 0.2));
               return (
                 <span
                   key={i}
-                  className="rec-bar h-11 w-[3px] rounded-full bg-gold"
+                  className="rg-eq block h-full w-[5px] rounded-[3px] bg-primary"
                   style={{ '--m': m.toFixed(2), '--d': `${(0.8 + (i % 5) * 0.12).toFixed(2)}s`, '--dl': `${(-(i * 0.13)).toFixed(2)}s` } as React.CSSProperties}
                 />
               );
@@ -1316,16 +1321,20 @@ export function UploadPanel({ disabled, onFile, label }: { disabled: boolean; on
           if (f && f.type.startsWith('audio/')) onFile(f);
         }}
         className={cn(
-          'flex cursor-pointer flex-col items-center justify-center gap-2 rounded-[20px_20px_6px_6px] border border-dashed bg-[var(--m-input)] px-4 py-5 text-center transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground',
+          /* Como la zona de «Tu audio (subir)» de design-V2 (`.dropz`): borde punteado de 1,5 px, esquinas de 28 px, 28/16 de relleno y sin fondo */
+          'flex w-full cursor-pointer flex-col items-center gap-2.5 rounded-[28px] border-[1.5px] border-dashed px-4 py-7 text-center text-foreground transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground',
           dragging ? 'border-primary bg-primary/10' : 'border-line hover:border-foreground',
           disabled && 'pointer-events-none opacity-60',
         )}
       >
-        <span aria-hidden className="flex size-10 shrink-0 items-center justify-center rounded-full bg-gold text-[#131C33]">
-          <Upload className="h-5 w-5" />
+        {/* Anillo de 72 px con el círculo del ícono adentro (52 px, dorado suave) */}
+        <span aria-hidden className="flex size-[72px] shrink-0 items-center justify-center rounded-full border-[3px] border-line">
+          <span className="flex size-[52px] items-center justify-center rounded-full bg-[color-mix(in_srgb,var(--m-gold)_18%,var(--m-surface))] text-gold">
+            <Upload className="h-[26px] w-[26px]" />
+          </span>
         </span>
-        <p className="text-sm font-medium">{label ?? 'O subí un archivo de audio'}</p>
-        <p className="text-xs text-muted-foreground">Arrastralo acá o tocá para elegirlo · MP3, WAV, M4A, WEBM · hasta 50 MB</p>
+        <b className="text-[17px] leading-[1.3] font-bold">{label ?? 'O subí un archivo de audio'}</b>
+        <span className="text-[13px] leading-[1.35] text-muted-foreground">Arrastralo acá o tocá para elegirlo · MP3, WAV, M4A, WEBM · hasta 50 MB</span>
         <input
           ref={inputRef}
           type="file"
@@ -1344,30 +1353,33 @@ export function UploadPanel({ disabled, onFile, label }: { disabled: boolean; on
 
 /* ───────────────────── Consejos (como Suno Paso 1) ───────────────────── */
 
+/** «Tips para grabar» de design-V2 (Crear · Creá tu voz · grabar): los mismos cuatro consejos, cada uno con su círculo de color e ícono. */
 const TIPS = [
-  { icon: Music4, title: 'Cantá en el estilo que quieras', text: 'Pop, rock, rap o lo que te guste.' },
-  { icon: Mic2, title: 'Un buen micrófono ayuda', text: 'El de la notebook también sirve.' },
-  { icon: AudioLines, title: 'Elegí un lugar tranquilo', text: 'Sin ruido de fondo' },
-  { icon: Waves, title: 'Al menos 10 segundos', text: 'Para captar tu timbre y tu tono.' },
+  { icon: Music4, title: 'Cantá el estilo que quieras', text: 'Pop, rock, rap o lo que te guste.', color: '#FF6B4A' },
+  { icon: Mic, title: 'Un buen micrófono ayuda', text: 'El de la notebook también sirve.', color: '#F0A44B' },
+  { icon: AudioLines, title: 'Elegí un lugar tranquilo', text: 'Sin ruido de fondo.', color: '#6F86F0' },
+  { icon: AudioLines, title: 'Al menos 10 segundos', text: 'Para captar tu timbre y tu tono.', color: '#E8755E' },
 ];
 
-const TIP_TONES = ['bg-primary text-[#131C33]', 'bg-gold text-[#131C33]', 'bg-voice text-on-voice', 'bg-primary text-[#131C33]'];
-
-/* Consejos con el mismo estilo que los botones de «Materiales»: pastilla con círculo de color, título en negrita y descripción debajo. */
+/* Los consejos van en una tarjeta como la del bottom sheet «Tips para grabar» (esquinas 28/28/14/14, borde y fondo de campo), uno al lado del otro:
+   cada uno con su círculo de color (28 px, ícono en azul de marca), el título y la descripción debajo. */
 function TipsRow() {
   return (
-    <ul className="grid grid-cols-2 gap-x-3 gap-y-4 sm:grid-cols-4">
-      {TIPS.map((t, n) => (
-        <li key={t.title} className="flex flex-col items-center gap-2 text-center">
-          <span className={cn('flex size-8 shrink-0 items-center justify-center rounded-full', TIP_TONES[n % TIP_TONES.length])} aria-hidden>
-            <t.icon className="h-4 w-4" />
-          </span>
-          <span className="min-w-0 leading-tight">
-            <span className="block text-sm font-bold">{t.title}</span>
-            <span className="block text-xs text-muted-foreground">{t.text}</span>
-          </span>
-        </li>
-      ))}
-    </ul>
+    <div className="rounded-[28px_28px_14px_14px] border-[1.5px] border-border bg-[var(--m-input)] px-3.5 py-3">
+      <h3 className="pb-3 text-center font-display text-base font-bold">Tips para grabar</h3>
+      <ul className="grid grid-cols-2 gap-x-3 gap-y-4 sm:grid-cols-4">
+        {TIPS.map((t) => (
+          <li key={t.title} className="flex flex-col items-center gap-2 text-center">
+            <span aria-hidden className="inline-flex size-7 shrink-0 items-center justify-center rounded-full text-[#131C33]" style={{ background: t.color }}>
+              <t.icon className="h-4 w-4" />
+            </span>
+            <span className="min-w-0 leading-tight">
+              <span className="block font-display text-sm font-bold leading-[1.2]">{t.title}</span>
+              <span className="mt-0.5 block text-xs leading-[1.35] text-muted-foreground">{t.text}</span>
+            </span>
+          </li>
+        ))}
+      </ul>
+    </div>
   );
 }

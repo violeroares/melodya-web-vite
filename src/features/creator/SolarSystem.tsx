@@ -11,7 +11,7 @@
 
 import React from 'react';
 import { createPortal } from 'react-dom';
-import { PenLine, Palette, Mic2, AudioLines, SlidersHorizontal, Sparkles, Plus, Minus, Check, CircleAlert, TriangleAlert } from 'lucide-react';
+import { PenLine, Palette, Mic, AudioLines, SlidersHorizontal, Sparkles, Plus, Check, CircleAlert } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { type PlanetId, type SongState, type Issue, type Capabilities, activePlanets, planetDef, summarize, songStatus, hasStyleInputs } from './song-model';
 import { VinylDisc } from './VinylDisc';
@@ -19,39 +19,51 @@ import { VinylDisc } from './VinylDisc';
 const ICONS: Record<PlanetId, React.ElementType> = {
   composition: PenLine,
   style: Palette,
-  voice: Mic2,
+  voice: Mic,
   reference: AudioLines,
   production: SlidersHorizontal,
   creativity: Sparkles,
 };
 
-/** Cada planeta lleva su color de elemento de design-V2 (sólido, con icono navy) además de icono y nombre. */
-const TONES: Record<PlanetId, string> = {
-  composition: 'bg-element-idea text-primary-foreground ring-[6px] ring-element-idea/20',
-  style: 'bg-element-style text-primary-foreground ring-[6px] ring-element-style/20',
-  voice: 'bg-element-lyrics text-primary-foreground ring-[6px] ring-element-lyrics/20',
-  reference: 'bg-element-sound text-primary-foreground ring-[6px] ring-element-sound/20',
-  production: 'bg-orbit-0 text-primary-foreground ring-[6px] ring-orbit-0/20',
-  creativity: 'bg-accent-soft text-primary-foreground ring-[6px] ring-accent-soft/20',
+/** Cada planeta lleva el color y el icono de design-V2 (Crear · «Sistema solar · capa sobre la barra», `EL`): fijos en claro y oscuro, con el icono
+ *  en azul de marca, además del nombre. Composición #FF6B4D, Voz #F0A44B, Audio #7B93E8, Producción #C4C9D3, Estilo #E0BCAE, Creatividad #E9876F. */
+const TONES: Record<PlanetId, { fill: string; ink: string }> = {
+  composition: { fill: 'bg-[#FF6B4D]', ink: 'text-[#FF6B4D]' },
+  style: { fill: 'bg-[#D2A692] dark:bg-[#E0B8A9]', ink: 'text-[#D2A692] dark:text-[#E0B8A9]' },
+  voice: { fill: 'bg-[#F0A44B]', ink: 'text-[#F0A44B]' },
+  reference: { fill: 'bg-[#7B93E8]', ink: 'text-[#7B93E8]' },
+  production: { fill: 'bg-[#C4C9D3]', ink: 'text-[#C4C9D3]' },
+  creativity: { fill: 'bg-[#E9876F]', ink: 'text-[#E9876F]' },
 };
 
 /** Mismo color de cada planeta, sin el halo: para los iconos de la lista «Materiales». */
 export const PLANET_DOT: Record<PlanetId, string> = {
-  composition: 'bg-element-idea text-primary-foreground',
-  style: 'bg-element-style text-primary-foreground',
-  voice: 'bg-element-lyrics text-primary-foreground',
-  reference: 'bg-element-sound text-primary-foreground',
-  production: 'bg-orbit-0 text-primary-foreground',
-  creativity: 'bg-accent-soft text-primary-foreground',
+  composition: 'bg-[#FF6B4D] text-[#131C33]',
+  style: 'bg-[#D2A692] dark:bg-[#E0B8A9] text-[#131C33]',
+  voice: 'bg-[#F0A44B] text-[#131C33]',
+  reference: 'bg-[#7B93E8] text-[#131C33]',
+  production: 'bg-[#C4C9D3] text-[#131C33]',
+  creativity: 'bg-[#E9876F] text-[#131C33]',
 };
 
-/* Decoración del sistema (misma que el hero de la landing): marcas doradas, destellos y lunas. Todo es aria-hidden. */
+/* Decoración del sistema (design-V2 · Crear, «Sistema solar · capa sobre la barra», SolarSystem.kt / SystemGeometry.kt): marcas doradas
+   alrededor de la órbita de afuera (sin el arco de abajo, donde vive el «+»), y chispas y notas doradas en los bordes. Todo es aria-hidden. */
+const OUTER = 36 * 1.22; // radio de la órbita de afuera, en % del contenedor (el mismo que ORBIT_RADII[2])
 const TICKS = Array.from({ length: 90 }, (_, i) => {
-  const a = (i * 2 * Math.PI) / 90, amp = 0.25 + 0.75 * Math.abs(Math.sin(i * 0.41) * Math.cos(i * 0.17)), r1 = 46.5, len = 0.8 + 2.2 * amp;
-  return { x1: 50 + r1 * Math.cos(a), y1: 50 + r1 * Math.sin(a), x2: 50 + (r1 + len) * Math.cos(a), y2: 50 + (r1 + len) * Math.sin(a), o: 0.3 + 0.4 * amp };
-});
-const SPARK = 'M0-1C.1-.28.28-.1 1 0 .28.1.1.28 0 1-.1.28-.28.1-1 0-.28-.1-.1-.28 0-1Z';
-const SPARKS: Array<[number, number, number, string]> = [[6, 10, 1.6, '0s'], [93, 14, 1.3, '1.2s'], [5, 88, 1.2, '2.4s'], [94, 90, 1.6, '3.6s']];
+  const deg = i * 4;
+  if (Math.abs(deg - 90) <= 24) return null;
+  const a = (deg * Math.PI) / 180;
+  const r1 = OUTER * (166 / 154); // en el mockup las marcas nacen a 166 sobre 154 de la órbita de afuera
+  const len = ((i % 5 === 0 ? 12 : i % 2 === 1 ? 5 : 8) * OUTER) / 154;
+  return { x1: 50 + r1 * Math.cos(a), y1: 50 + r1 * Math.sin(a), x2: 50 + (r1 + len) * Math.cos(a), y2: 50 + (r1 + len) * Math.sin(a) };
+}).filter((t): t is { x1: number; y1: number; x2: number; y2: number } => t !== null);
+const SPARK = 'M12 2l2.2 7.8L22 12l-7.8 2.2L12 22l-2.2-7.8L2 12l7.8-2.2z';
+const NOTE = 'M9 17V5l10-2v12M9 17a3 3 0 1 1-3-3 3 3 0 0 1 3 3zM19 15a3 3 0 1 1-3-3 3 3 0 0 1 3 3z';
+/** [x %, y %, trazo, tamaño px] de SolarBackdrop. */
+const BACKDROP: Array<[number, number, string, number]> = [
+  [9, 4, SPARK, 18], [90, 3, SPARK, 18], [16, 10, NOTE, 16], [84, 9, NOTE, 18],
+  [8, 90, NOTE, 16], [92, 91, NOTE, 18], [95, 97, SPARK, 10], [7, 98, SPARK, 6],
+];
 
 export const planetIcon = (id: PlanetId) => ICONS[id];
 
@@ -79,30 +91,127 @@ const SLOTS: Slot[] = [
   { orbit: 1, angle: 340, orbitSm: 2, angleSm: 130 },
 ];
 
-/** Etiqueta del planeta (design-V2 · project-home `.lab`): tarjeta chica translúcida con el nombre en dorado y mayúsculas arriba
- *  y el detalle abajo. Va siempre centrada debajo del círculo. */
-function PlanetLabel({ icon: Icon, label, detail, className }: { icon: React.ElementType; label: string; detail: string; className?: string }) {
+/** Etiqueta del planeta (design-V2 · `.pcard`): tarjeta chica translúcida con desenfoque; el nombre en dorado, mayúsculas y 800 de peso arriba
+ *  y el detalle abajo. Va centrada debajo del círculo. */
+function PlanetLabel({ label, detail, pending, className }: { label: string; detail: string; pending?: boolean; className?: string }) {
   return (
     <span
       className={cn(
-        'flex w-max max-w-[7rem] flex-col rounded-[10px] border px-2.5 pt-1 pb-1.5 leading-[1.2] backdrop-blur-[8px] sm:max-w-[10.5rem] sm:rounded-[14px] sm:px-3.5 sm:pt-[7px] sm:pb-2',
-        'border-[rgba(11,18,34,.10)] bg-[rgba(255,253,247,.8)] shadow-[0_8px_18px_-10px_rgba(60,45,20,.32)]',
-        'dark:border-[rgba(232,211,162,.15)] dark:bg-[rgba(7,11,24,.66)] dark:shadow-none',
-        'absolute top-full left-1/2 z-10 mt-1.5 -translate-x-1/2 items-center text-center',
+        'flex w-max max-w-[clamp(7rem,26cqw,12.5rem)] flex-col items-center justify-center gap-px rounded-[11px] border border-faint px-[clamp(8px,2.4cqw,14px)] py-[clamp(4px,1.3cqw,8px)] text-center backdrop-blur-[8px]',
+        'bg-[rgba(255,253,247,.8)] dark:bg-[rgba(7,11,24,.66)]',
+        'absolute top-full left-1/2 z-10 mt-1.5 -translate-x-1/2',
         className
       )}
       data-launch="label"
     >
-      <span className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-[0.14em] text-lyric-tag sm:text-[11px]">
-        <Icon className="h-[11px] w-[11px] shrink-0 sm:h-3 sm:w-3" aria-hidden />
-        {label}
-      </span>
-      <span className="mt-0.5 line-clamp-2 font-display text-[14.5px] font-medium tracking-[-0.01em] text-foreground @max-[36rem]:hidden">{detail}</span>
+      <span className="text-[length:clamp(10px,2.4cqw,14px)] font-extrabold uppercase leading-[1.25] tracking-[0.12em] text-lyric-tag dark:text-gold">{label}</span>
+      <span className={cn('max-w-full truncate text-[length:clamp(11px,2.4cqw,14px)] leading-[1.25] @max-[36rem]:hidden', pending ? 'text-muted-foreground' : 'text-foreground')}>{detail}</span>
     </span>
   );
 }
 
-export function SolarSystem({ song, caps, issues, onOpenPlanet, onOpenCatalog, registerRef, launching, onLaunchEnd }: {
+/** Vuelo de llegada de un elemento nuevo (design-V2 · Crear V2.1 con animación): nace en el «+», va en espiral a su lugar (ángulo y radio
+ *  interpolados por el camino más corto, 0,55 s + 0,30 s × ángulo/180°, ease-in-out cúbico, crece de 0,45 a 1 en el primer 45 %), deja una
+ *  estela de 6 puntos (últimos 0,3 s) y al llegar un aro del color crece a 2,4× y se apaga en 0,6 s mientras la etiqueta aparece en 0,25 s.
+ *  Nunca bloquea: el planeta ya está en su lugar para toques y lector de pantalla; tocar algo durante el vuelo lo termina.
+ *  Con reduced-motion: sin vuelo, estela ni aro, solo un fundido de 0,2 s. */
+function ArrivalFlight({ boxRef, id, orbit, angle, radii, onDone }: { boxRef: React.RefObject<HTMLDivElement | null>; id: PlanetId; orbit: number; angle: number; radii: number[]; onDone: () => void }) {
+  const layerRef = React.useRef<HTMLDivElement>(null);
+  const doneRef = React.useRef(onDone);
+  React.useEffect(() => { doneRef.current = onDone; }, [onDone]);
+  React.useEffect(() => {
+    const box = boxRef.current;
+    const layer = layerRef.current;
+    const li = box?.querySelector<HTMLElement>(`[data-planet="${id}"]`);
+    if (!box || !layer || !li) { doneRef.current(); return; }
+    const circle = li.querySelector<HTMLElement>('button > span');
+    const label = li.querySelector<HTMLElement>('[data-launch="label"]');
+    const iconSvg = circle?.querySelector('svg')?.outerHTML ?? '';
+    const cs = circle ? getComputedStyle(circle) : null;
+    // El planeta nace punteado: fondo de la página, borde e icono del color del elemento
+    const color = cs?.color ?? '#FF6B4D';
+    const bg = cs?.backgroundColor ?? 'transparent';
+    const PD = circle?.offsetWidth ?? 44;
+    const S = box.clientWidth;
+    const c = S / 2;
+    const startR = (radii[2] / 100) * S;
+    const endR = (radii[orbit] / 100) * S;
+    const startA = 90;
+    const sw = (() => { let d = (((angle - 90) % 360) + 360) % 360; if (d > 180) d -= 360; return d; })();
+    const flightT = 0.55 + (0.3 * Math.abs(sw)) / 180;
+    const ease = (t: number) => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
+    const pos = (t: number) => {
+      const k = ease(Math.min(Math.max(t / flightT, 0), 1));
+      const a = ((startA + sw * k) * Math.PI) / 180;
+      const r = startR + (endR - startR) * k;
+      return { x: c + r * Math.cos(a), y: c + r * Math.sin(a) };
+    };
+    const target = pos(flightT);
+    const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    let raf = 0;
+    let finished = false;
+    const finish = () => {
+      if (finished) return;
+      finished = true;
+      cancelAnimationFrame(raf);
+      window.removeEventListener('pointerdown', finish, true);
+      li.style.opacity = '';
+      if (label) label.style.opacity = '';
+      layer.innerHTML = '';
+      doneRef.current();
+    };
+    // Tocar el «+» o un planeta durante el vuelo lo termina
+    window.addEventListener('pointerdown', finish, true);
+    const t0 = performance.now();
+    li.style.opacity = '0';
+    if (reduce) {
+      const fade = (now: number) => {
+        const o = Math.min((now - t0) / 1000 / 0.2, 1);
+        li.style.opacity = String(o);
+        if (o < 1) raf = requestAnimationFrame(fade); else finish();
+      };
+      raf = requestAnimationFrame(fade);
+      return finish;
+    }
+    if (label) label.style.opacity = '0';
+    const frame = (now: number) => {
+      const t = (now - t0) / 1000;
+      let html = '';
+      if (t < flightT) {
+        const p = pos(t);
+        const sc = 0.45 + 0.55 * Math.min(t / (flightT / 2.2), 1);
+        const d = PD * 0.45;
+        for (let i = 1; i <= 6; i++) {
+          const tt = t - (0.3 * i) / 6;
+          if (tt < 0) break;
+          const q = pos(tt);
+          html += `<span style="position:absolute;border-radius:9999px;left:${q.x - d / 2}px;top:${q.y - d / 2}px;width:${d}px;height:${d}px;background:${color};opacity:${0.45 * (1 - i / 7)}"></span>`;
+        }
+        html += `<span style="position:absolute;display:flex;align-items:center;justify-content:center;border-radius:9999px;left:${p.x - PD / 2}px;top:${p.y - PD / 2}px;width:${PD}px;height:${PD}px;box-sizing:border-box;background:${bg};border:2px dashed ${color};color:${color};transform:scale(${sc})">${iconSvg}</span>`;
+        li.style.opacity = '0';
+      } else {
+        const lt = t - flightT;
+        li.style.opacity = '1';
+        if (label) label.style.opacity = String(Math.min(lt / 0.25, 1));
+        if (lt >= 0.6) { finish(); return; }
+        const rk = 1 - Math.pow(1 - lt / 0.6, 2);
+        html += `<span style="position:absolute;border-radius:9999px;border:2px solid ${color};left:${target.x - PD / 2}px;top:${target.y - PD / 2}px;width:${PD}px;height:${PD}px;transform:scale(${1 + 1.4 * rk});opacity:${0.8 * (1 - rk)}"></span>`;
+      }
+      layer.innerHTML = html;
+      raf = requestAnimationFrame(frame);
+    };
+    raf = requestAnimationFrame(frame);
+    return finish;
+  }, [boxRef, id, orbit, angle, radii]);
+  return <div ref={layerRef} aria-hidden className="pointer-events-none absolute inset-0 z-20" />;
+}
+
+export function SolarSystem({ song, caps, issues, onOpenPlanet, onOpenCatalog, registerRef, launching, onLaunchEnd, arrival, pending, onArrivalEnd }: {
+  /** Elementos agregados que todavía no se completaron con «Listo»: se dibujan punteados. */
+  pending?: PlanetId[];
+  /** Elemento recién agregado cuyo editor ya se cerró: vuela desde el «+» hasta su lugar. */
+  arrival?: PlanetId | null;
+  onArrivalEnd?: () => void;
   /** Animación de lanzamiento (al tocar «Crear mi canción»): el sistema se recoge y se forma el disco; al terminar avisa con `onLaunchEnd`. */
   launching?: boolean;
   onLaunchEnd?: () => void;
@@ -118,7 +227,20 @@ export function SolarSystem({ song, caps, issues, onOpenPlanet, onOpenCatalog, r
   const summary = summarize(song, caps);
   const status = songStatus(song, caps);
   const R = 36; // radio de la órbita media, en % del contenedor
-  const ORBIT_RADII = [R * 0.72, R, R * 1.22]; // coinciden con los tres anillos exteriores
+  const ORBIT_RADII = React.useMemo(() => [R * 0.72, R, R * 1.22], [R]); // coinciden con los tres anillos exteriores
+  const [wide, setWide] = React.useState(false);
+  React.useEffect(() => {
+    const mq = window.matchMedia('(min-width: 640px)');
+    const on = () => setWide(mq.matches);
+    on();
+    mq.addEventListener('change', on);
+    return () => mq.removeEventListener('change', on);
+  }, []);
+  const missingOptional = (['voice', 'reference', 'production', 'creativity'] as PlanetId[]).filter((id) => !ids.includes(id)).map((id, i) => { const l = planetDef(id).label; return i === 0 ? l : l.toLowerCase(); });
+  const arrivalIdx = arrival ? ids.indexOf(arrival) : -1;
+  const arrivalSlot = arrivalIdx >= 0 ? SLOTS[Math.min(arrivalIdx, SLOTS.length - 1)] : null;
+  // Si el elemento ya no está (se quitó) o empieza el lanzamiento, se descarta la llegada
+  React.useEffect(() => { if (arrival && (!arrivalSlot || launching)) onArrivalEnd?.(); }, [arrival, arrivalSlot, launching, onArrivalEnd]);
 
   /* ── Animación de lanzamiento: «Generar canción · animación» del prototipo (design-V2), línea de tiempo de 4,8 s ──
      Los planetas empiezan a girar y se van hacia el borde del círculo de afuera mientras los anillos se recogen en surcos y aparece el disco;
@@ -285,49 +407,35 @@ export function SolarSystem({ song, caps, issues, onOpenPlanet, onOpenCatalog, r
     <section aria-labelledby="solar-title" className="relative pb-16 sm:pb-[4.5rem]">
       <h2 id="solar-title" className="sr-only">Elementos de tu canción</h2>
       <div ref={boxRef} className="@container relative mx-auto aspect-square w-full max-w-[min(640px,max(480px,calc(100dvh-17rem)))]">
-        {/* Órbitas y decoración: puramente decorativas */}
+        {/* Chispas y notas doradas en los bordes (SolarBackdrop) */}
+        <div aria-hidden data-launch="deco" className="pointer-events-none absolute inset-0 text-gold opacity-70">
+          {BACKDROP.map(([x, y, d, sz], i) => (
+            <svg key={i} className="absolute -translate-x-1/2 -translate-y-1/2" style={{ left: `${x}%`, top: `${y}%`, width: `clamp(${Math.round(sz * 0.6)}px, ${(sz / 5.6).toFixed(2)}cqw, ${sz}px)`, height: `clamp(${Math.round(sz * 0.6)}px, ${(sz / 5.6).toFixed(2)}cqw, ${sz}px)` }} viewBox="0 0 24 24" fill="currentColor"><path d={d} /></svg>
+          ))}
+        </div>
+        {/* Órbitas y marcas: puramente decorativas */}
         <svg aria-hidden className="pointer-events-none absolute inset-0 h-full w-full overflow-visible" viewBox="0 0 100 100" fill="none">
-          <g data-launch="axes" stroke="currentColor" strokeOpacity=".14" strokeWidth=".14"><line x1="0" y1="50" x2="100" y2="50" /><line x1="50" y1="0" x2="50" y2="100" /></g>
-          {/* Anillos grises que se desvanecen hacia afuera (--m-orbit-0…3) */}
-          <circle data-launch="ring" data-i="0" data-r={R * 0.5} cx="50" cy="50" r={R * 0.5} stroke="var(--m-orbit-0)" strokeWidth="0.28" />
-          <circle data-launch="ring" data-i="1" data-r={R * 0.72} cx="50" cy="50" r={R * 0.72} stroke="var(--m-orbit-1)" strokeWidth="0.24" />
-          <circle data-launch="ring" data-i="2" data-r={R} cx="50" cy="50" r={R} stroke="var(--m-orbit-2)" strokeWidth="0.2" />
-          <circle data-launch="ring" data-i="3" data-r={R * 1.22} cx="50" cy="50" r={R * 1.22} stroke="var(--m-orbit-3)" strokeWidth="0.16" />
-          <g data-launch="deco" stroke="var(--m-gold)" strokeWidth=".4" strokeLinecap="round">
-            {TICKS.map((t, i) => <line key={i} x1={t.x1.toFixed(2)} y1={t.y1.toFixed(2)} x2={t.x2.toFixed(2)} y2={t.y2.toFixed(2)} strokeOpacity={t.o.toFixed(2)} />)}
-          </g>
-          <g data-launch="deco" fill="var(--m-gold)">
-            {SPARKS.map(([x, y, sc, d], i) => <path key={i} d={SPARK} transform={`translate(${x} ${y}) scale(${sc})`} className="motion-safe:animate-pulse" style={{ animationDelay: d, animationDuration: '5s' }} />)}
+          {/* Tres órbitas, una por cada anillo donde van los planetas: foreground al 40 %, de más gruesa (adentro) a más fina (afuera) */}
+          {ORBIT_RADII.map((r, i) => (
+            <circle key={i} data-launch="ring" data-i={i} data-r={r} cx="50" cy="50" r={r} stroke="var(--m-foreground)" strokeOpacity=".4" strokeWidth={[0.39, 0.29, 0.18][i]} />
+          ))}
+          <g data-launch="deco" stroke="var(--m-gold)" strokeOpacity=".75" strokeWidth="0.27" strokeLinecap="round">
+            {TICKS.map((t, i) => <line key={i} x1={t.x1.toFixed(2)} y1={t.y1.toFixed(2)} x2={t.x2.toFixed(2)} y2={t.y2.toFixed(2)} />)}
           </g>
         </svg>
-        {/* Lunas: dos puntos que orbitan despacio sobre los anillos interiores (no son interactivos) */}
-        <div aria-hidden data-launch="deco" className="pointer-events-none absolute left-1/2 top-1/2 aspect-square -translate-x-1/2 -translate-y-1/2 motion-safe:animate-[spin_120s_linear_infinite]" style={{ width: `${R}%` }}>
-          <span className="absolute left-1/2 top-0 h-2 w-2 -translate-x-1/2 -translate-y-1/2 rounded-full bg-element-sound" />
-        </div>
-        <div aria-hidden data-launch="deco" className="pointer-events-none absolute left-1/2 top-1/2 aspect-square -translate-x-1/2 -translate-y-1/2 motion-safe:animate-[spin_200s_linear_infinite_reverse]" style={{ width: `${R * 1.44}%` }}>
-          <span className="absolute left-1/2 top-0 h-2 w-2 -translate-x-1/2 -translate-y-1/2 rounded-full bg-element-lyrics" />
-        </div>
 
         {/* Centro: la canción */}
         <div data-launch="core-box" className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
           <div
             data-launch="core"
-            className={cn(
-              'relative flex h-[6.5rem] w-[6.5rem] flex-col items-center justify-center gap-0.5 rounded-full bg-[color-mix(in_srgb,var(--background)_55%,var(--surface))] p-2 dark:bg-surface text-center text-foreground sm:h-[9.5rem] sm:w-[9.5rem] sm:gap-1 sm:p-4',
-              status.ready ? 'shadow-[0_0_0_2.5px_var(--success)]' : 'shadow-[0_0_0_2.5px_var(--m-gold)]'
-            )}
+            style={{ width: `${(ORBIT_RADII[0] * 2 * 0.73).toFixed(2)}cqw` }}
+            className="relative flex aspect-square flex-col items-center justify-center gap-1.5 rounded-full border-[2.5px] border-gold bg-surface px-[clamp(8px,2.4cqw,16px)] text-center text-foreground shadow-[0_0_0_clamp(8px,2cqw,12px)_color-mix(in_srgb,var(--m-gold)_9%,transparent)]"
             role="group"
             aria-label={`Mi canción. ${status.ready ? 'Lista para crear.' : `Falta: ${status.missing[0]}`}`}
           >
-            {/* Halo naranja que respira detrás del centro */}
-            <span aria-hidden className="pointer-events-none absolute -inset-[60%] -z-10 rounded-full bg-[radial-gradient(circle,color-mix(in_srgb,var(--m-accent)_24%,transparent)_0,transparent_62%)] motion-safe:animate-pulse [animation-duration:6s]" />
-            <p className="line-clamp-2 font-display text-sm font-bold leading-tight sm:text-base">{status.ready ? 'Mi canción' : song.composition.title.trim() || 'Mi canción'}</p>
-            <p className={cn('mt-0.5 inline-flex flex-col items-center gap-1 text-center text-[10px] leading-tight font-semibold sm:flex-row sm:gap-1.5 sm:text-[11px]', status.ready ? 'text-success' : 'text-label dark:text-gold')}>
-              {status.ready ? (
-                <span aria-hidden className="flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-success text-background sm:h-5 sm:w-5">
-                  <Check className="h-3 w-3" strokeWidth={3} />
-                </span>
-              ) : <CircleAlert className="h-3 w-3" aria-hidden />}
+            <p className="line-clamp-2 font-display text-[length:clamp(14px,3.4cqw,20px)] font-bold leading-[1.15] tracking-[-0.01em]">{status.ready ? 'Mi canción' : song.composition.title.trim() || 'Mi canción'}</p>
+            <p className="inline-flex items-center gap-1 text-center text-[length:clamp(11px,2.4cqw,14px)] font-medium leading-[1.2] text-label dark:text-gold">
+              {status.ready ? <Check className="h-3 w-3" strokeWidth={3} aria-hidden /> : <CircleAlert className="h-3 w-3" aria-hidden />}
               {status.ready ? 'Lista para crear' : 'Falta completar'}
             </p>
           </div>
@@ -339,29 +447,31 @@ export function SolarSystem({ song, caps, issues, onOpenPlanet, onOpenCatalog, r
             const Icon = ICONS[id];
             const def = planetDef(id);
             const st = planetState(issues, id, id === 'style' && !hasStyleInputs(song));
+            const isPending = pending?.includes(id) ?? false;
             return (
-              <li key={id} style={pos(i)} className="absolute left-[var(--xs)] top-[var(--ys)] -translate-x-1/2 -translate-y-1/2 sm:left-[var(--x)] sm:top-[var(--y)]">
+              <li key={id} data-planet={id} style={pos(i)} className="absolute left-[var(--xs)] top-[var(--ys)] -translate-x-1/2 -translate-y-1/2 sm:left-[var(--x)] sm:top-[var(--y)]">
                 <button
                   type="button"
                   ref={(el) => registerRef(id, el)}
                   onClick={() => onOpenPlanet(id)}
                   aria-haspopup="dialog"
                   aria-label={`${def.label}. ${summary[id]}. ${STATE_TEXT[st]}. Tocá para editar.`}
-                  className="group relative flex w-11 cursor-pointer items-center justify-center rounded-full outline-none focus-visible:ring-4 focus-visible:ring-[var(--m-focus-ring)] focus-visible:outline-2 focus-visible:outline-foreground sm:w-16"
+                  className="group relative flex w-[clamp(2.5rem,11cqw,4rem)] cursor-pointer items-center justify-center rounded-full outline-none focus-visible:ring-4 focus-visible:ring-[var(--m-focus-ring)] focus-visible:outline-2 focus-visible:outline-foreground"
                 >
-                  <span className={cn('relative flex h-11 w-11 items-center justify-center rounded-full sm:h-16 sm:w-16 transition-[transform,box-shadow] duration-200 group-hover:scale-110 group-hover:ring-[10px] group-active:scale-100 motion-reduce:transition-none motion-reduce:group-hover:scale-100', TONES[id])}>
-                    <Icon className="h-5 w-5 sm:h-7 sm:w-7" aria-hidden />
-                    <span
-                      className={cn(
-                        'absolute -right-1 -top-1 flex h-4 w-4 items-center justify-center rounded-full border-2 border-background sm:h-5 sm:w-5',
-                        st === 'error' ? 'bg-destructive text-background' : st === 'warning' ? 'bg-gold text-on-gold' : st === 'optional' ? 'bg-surface-2 text-muted-foreground' : 'bg-success text-background'
-                      )}
-                      aria-hidden
-                    >
-                      {st === 'error' ? <CircleAlert className="h-3 w-3" /> : st === 'warning' ? <TriangleAlert className="h-3 w-3" /> : st === 'optional' ? <Minus className="h-3 w-3" /> : <Check className="h-3 w-3" strokeWidth={3} />}
-                    </span>
+                  {/* Sin completar: círculo punteado del color del elemento (design-V2 · `.planet.pending`). Con «Listo» se rellena. */}
+                  <span
+                    style={{ transitionDuration: '200ms,500ms,500ms,500ms' }}
+                    className={cn(
+                      'relative flex h-[clamp(2.5rem,11cqw,4rem)] w-[clamp(2.5rem,11cqw,4rem)] items-center justify-center rounded-full border-2 transition-[transform,color,border-color,background-color] group-hover:scale-110 group-active:scale-100 motion-reduce:transition-none motion-reduce:group-hover:scale-100',
+                      isPending ? cn('border-dashed border-current bg-background', TONES[id].ink) : 'border-transparent bg-transparent text-[#131C33]'
+                    )}
+                  >
+                    <span aria-hidden className={cn('absolute -inset-0.5 rounded-full transition-transform duration-500 ease-out motion-reduce:transition-none', TONES[id].fill, isPending ? 'scale-0' : 'scale-100')} />
+                    <Icon className="relative h-[clamp(1.25rem,5.3cqw,1.75rem)] w-[clamp(1.25rem,5.3cqw,1.75rem)]" aria-hidden />
+                    {/* Con un problema: aro punteado alrededor (design-V2 · `.planet.alert`) */}
+                    {!isPending && (st === 'error' || st === 'warning') && <span aria-hidden className="pointer-events-none absolute -inset-[clamp(5px,1.4cqw,8px)] rounded-full border-2 border-dashed border-label dark:border-gold" />}
                   </span>
-                  <PlanetLabel icon={Icon} label={def.label} detail={summary[id]} />
+                  <PlanetLabel label={def.label} detail={isPending ? 'Falta completar' : summary[id]} pending={isPending} />
                 </button>
               </li>
             );
@@ -372,16 +482,31 @@ export function SolarSystem({ song, caps, issues, onOpenPlanet, onOpenCatalog, r
               ref={(el) => registerRef('add', el)}
               onClick={onOpenCatalog}
               aria-haspopup="dialog"
-              aria-label="Agregar un elemento a tu canción: voz, referencia de audio, producción o creatividad"
-              className="group relative flex w-11 cursor-pointer items-center justify-center rounded-full outline-none focus-visible:ring-4 focus-visible:ring-[var(--m-focus-ring)] focus-visible:outline-2 focus-visible:outline-foreground sm:w-16"
+              aria-label="Agregar un elemento a tu canción: voz, audio, producción o creatividad"
+              className="group relative flex w-[clamp(3.25rem,13cqw,5rem)] cursor-pointer items-center justify-center rounded-full outline-none focus-visible:ring-4 focus-visible:ring-[var(--m-focus-ring)] focus-visible:outline-2 focus-visible:outline-foreground"
             >
-              <span className="flex h-11 w-11 items-center justify-center rounded-full border-[1.5px] border-dashed border-gold sm:h-16 sm:w-16 bg-surface text-lyric-tag transition-[transform,background-color] duration-200 group-hover:scale-110 group-hover:bg-accent motion-reduce:group-hover:scale-100">
-                <Plus className="h-5 w-5 sm:h-7 sm:w-7" aria-hidden />
+              <span className="flex h-[clamp(3.25rem,13cqw,5rem)] w-[clamp(3.25rem,13cqw,5rem)] items-center justify-center rounded-full bg-gold text-[#131C33] shadow-[0_0_0_clamp(4px,1.1cqw,6px)_var(--background)] transition-transform duration-200 group-hover:scale-110 motion-reduce:transition-none motion-reduce:group-hover:scale-100">
+                <Plus className="h-[clamp(1.75rem,6.5cqw,2.25rem)] w-[clamp(1.75rem,6.5cqw,2.25rem)]" strokeWidth={2} aria-hidden />
               </span>
-              <PlanetLabel icon={Plus} label="Agregar" detail="Más elementos" />
+              <span data-launch="label" className="absolute left-1/2 top-full z-10 mt-2 w-[clamp(130px,30cqw,170px)] -translate-x-1/2 text-center text-[length:clamp(13px,2.8cqw,16px)] font-bold leading-[1.5]">
+                {missingOptional.length ? 'Agregar' : 'Completo'}
+                {missingOptional.length > 0 && <span className="font-normal"> (opcional)</span>}
+                {missingOptional.length > 0 && <span className="block text-[length:clamp(11px,2.2cqw,12.5px)] font-normal leading-[1.3] text-muted-foreground @max-[36rem]:hidden">{missingOptional.join(', ')}</span>}
+              </span>
             </button>
           </li>
         </ul>
+        {arrival && arrivalSlot && !launching && (
+          <ArrivalFlight
+            key={arrival}
+            boxRef={boxRef}
+            id={arrival}
+            orbit={wide ? arrivalSlot.orbit : arrivalSlot.orbitSm ?? arrivalSlot.orbit}
+            angle={wide ? arrivalSlot.angle : arrivalSlot.angleSm}
+            radii={ORBIT_RADII}
+            onDone={() => onArrivalEnd?.()}
+          />
+        )}
       </div>
       {/* Lanzamiento: el disco, la etiqueta y el agujero van en una capa fija sobre toda la pantalla (portal), para que al crecer no los recorte ningún contenedor */}
       {launching && typeof document !== 'undefined' && createPortal(

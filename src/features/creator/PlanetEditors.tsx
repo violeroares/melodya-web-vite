@@ -14,6 +14,7 @@ import type { CapabilityLocks } from '@/lib/capabilities';
 import { LOCKED_CONTROL, RequiredPlanBadge } from '@/components/common/PlanGate';
 import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
+import { formatDateDMY } from '@/lib/subscription';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -101,6 +102,62 @@ function Choice({ checked, onSelect, title, description, name, disabled, capsule
       <span className="min-w-0">
         <span className="block text-sm font-semibold">{title}</span>
         {description && <span className="block text-xs leading-relaxed text-muted-foreground">{description}</span>}
+      </span>
+    </label>
+  );
+}
+
+/** Las voces creadas desde la web se llaman «Mi voz · 12 nov»: la fecha ya se muestra abajo («Creada el…»), así que no se repite en el título. */
+const withoutAutoDate = (name: string) => name.replace(/\s*·\s*\d{1,2}\s+[a-záéíóúñ]{3,4}\.?\s*$/i, '').trim() || name;
+
+/** Fila de una voz propia (design-V2 · «Tus voces» `.vitem.pick`): avatar de 48 px con el micrófono en el color del planeta Voz, nombre en Bricolage 16/700,
+ *  descripción en 13 px y a la derecha un selector circular de 28 px: aro dorado, relleno dorado con tilde cuando está elegida. */
+function VoiceRow({ checked, onSelect, title, description, name, disabled }: { checked: boolean; onSelect: () => void; title: string; description?: string; name: string; disabled?: boolean }) {
+  return (
+    <label
+      className={cn(
+        'flex cursor-pointer items-center gap-3 border-t border-[var(--m-separator)] py-3.5 first:border-t-0 has-[input:focus-visible]:rounded-xl has-[input:focus-visible]:ring-2 has-[input:focus-visible]:ring-foreground',
+        disabled && 'cursor-not-allowed opacity-50'
+      )}
+    >
+      <input type="radio" name={name} checked={checked} onChange={onSelect} disabled={disabled} className="sr-only" />
+      <span aria-hidden className="flex size-12 shrink-0 items-center justify-center rounded-full bg-[#F0A44B] text-[#131C33]">
+        <Mic className="h-[22px] w-[22px]" />
+      </span>
+      <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+        <span className="truncate font-display text-base font-bold leading-[1.2]">{title}</span>
+        {description && <span className="text-[13px] leading-[1.35] text-muted-foreground">{description}</span>}
+      </span>
+      <span aria-hidden className={cn('flex size-7 shrink-0 items-center justify-center rounded-full border-2 border-gold transition-colors', checked && 'bg-gold text-on-gold')}>
+        {checked && <Check className="h-4 w-4" strokeWidth={3} />}
+      </span>
+    </label>
+  );
+}
+
+/** Fila de un audio de la biblioteca (design-V2 · «Elegir de tu biblioteca», `.lib-row.two.pickrow`): círculo de 44 px (naranja de Voz para voz y beatbox, azul de Audio para
+ *  el resto), el nombre en Bricolage 16/700 y debajo la descripción de siempre («tipo · N s») en 13 px. Se elige tocando la fila; la elegida lleva un velo de acento y un tilde dorado. */
+function SampleRow({ checked, onSelect, title, type, description, name }: { checked: boolean; onSelect: () => void; title: string; type?: string; description?: string; name: string }) {
+  // Voz y beatbox → naranja de Voz con micrófono; todo lo demás (instrumentos) → azul de Audio, con el ícono de su tipo
+  const isVoice = /^(voice|vocal|beatbox)/i.test(type ?? '');
+  const Icon = isVoice ? Mic : /^guitar/i.test(type ?? '') || /^bass/i.test(type ?? '') ? Guitar : /^drum/i.test(type ?? '') ? Disc3 : /^melod/i.test(type ?? '') ? Music4 : AudioLines;
+  return (
+    <label
+      className={cn(
+        'flex cursor-pointer items-center gap-3.5 border-t border-[var(--m-separator)] px-3.5 py-3 first:border-t-0 has-[input:focus-visible]:ring-2 has-[input:focus-visible]:ring-inset has-[input:focus-visible]:ring-foreground',
+        checked && 'bg-[color-mix(in_srgb,var(--m-accent)_14%,transparent)]'
+      )}
+    >
+      <input type="radio" name={name} checked={checked} onChange={onSelect} className="sr-only" />
+      <span aria-hidden className="flex size-11 shrink-0 items-center justify-center rounded-full text-[#131C33]" style={{ background: isVoice ? '#F0A44B' : '#7B93E8' }}>
+        <Icon className="h-[22px] w-[22px]" />
+      </span>
+      <span className="flex min-w-0 flex-1 flex-col gap-1">
+        <span className="truncate font-display text-base leading-[1.25] font-bold">{title}</span>
+        {description && <span className="text-[13px] leading-[1.35] text-muted-foreground">{description}</span>}
+      </span>
+      <span aria-hidden className={cn('flex size-7 shrink-0 items-center justify-center rounded-full border-2 border-gold transition-colors', checked && 'bg-gold text-on-gold')}>
+        {checked && <Check className="h-4 w-4" strokeWidth={3} />}
       </span>
     </label>
   );
@@ -271,10 +328,11 @@ export function CompositionEditor({ song, patch, onOpenStudio, issues, onApplySu
       {c.mode === 'idea' && (
         <fieldset className="space-y-2">
           <legend className="mb-3 text-sm font-semibold">Temática <span className="font-normal text-muted-foreground">(opcional: ayuda a Melodya a escribir la letra)</span></legend>
-          <div className="grid auto-cols-fr grid-flow-col gap-1.5">
+          {/* Una sola fila: los seis chips se reparten todo el ancho y, si en algún tamaño no entran, la fila se desplaza hacia el costado (sin cortar palabras) */}
+          <div className="scrollbar-none -mx-1 flex flex-nowrap gap-1 overflow-x-auto px-1 pb-0.5">
             {MOODS.map((m) => (
-              <Chip key={m.id} active={c.mood === m.id} onClick={() => patch({ mood: c.mood === m.id ? '' : m.id })} className="min-h-9 min-w-0 justify-center px-1.5 py-1.5 text-xs">
-                <span className="truncate">{m.label}</span>
+              <Chip key={m.id} active={c.mood === m.id} onClick={() => patch({ mood: c.mood === m.id ? '' : m.id })} className="h-9 flex-1 justify-center px-2 text-xs">
+                {m.label}
               </Chip>
             ))}
           </div>
@@ -299,7 +357,7 @@ export function CompositionEditor({ song, patch, onOpenStudio, issues, onApplySu
             <button
               type="button"
               onClick={() => setPickerOpen(true)}
-              className="inline-flex items-center gap-1.5 rounded text-xs font-semibold text-amber-strong underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground"
+              className="inline-flex min-h-11 items-center gap-1.5 text-[13px] leading-[1.2] font-bold tracking-[0.02em] text-label focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground"
             >
               <BookOpen className="h-3.5 w-3.5" aria-hidden /> Mis letras
             </button>
@@ -322,7 +380,10 @@ export function CompositionEditor({ song, patch, onOpenStudio, issues, onApplySu
       {c.mode === 'idea' && (
         <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs leading-relaxed text-muted-foreground">
           <span>¿Preferís ver y editar la letra antes de generar?</span>
-          <button type="button" onClick={onOpenStudio} className="font-semibold text-amber-strong underline underline-offset-4">Escribila ahora con Melodya</button>
+          {/* Botón de texto como «Sugerir una idea» de design-V2 (`.btn-t`): ícono de destellos de 14 px, 13/700 con 0,02 em de espaciado, color de etiqueta, 44 px de alto */}
+          <button type="button" onClick={onOpenStudio} className="inline-flex min-h-11 items-center gap-1.5 text-[13px] leading-[1.2] font-bold tracking-[0.02em] text-label focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground">
+            <Sparkles className="h-3.5 w-3.5 shrink-0" aria-hidden />Escribila ahora con Melodya
+          </button>
           <RequiredPlanBadge capability="LYRICS_AI" />
         </p>
       )}
@@ -404,12 +465,12 @@ export function StyleEditor({ song, patch, issues }: { song: SongState; patch: P
           <div>
             <p className="mb-2 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground"><Sparkles className="h-3 w-3 text-amber-strong" aria-hidden /> Tus géneros</p>
             <div className="flex flex-wrap gap-2">
-              {profile.map((g) => { const Icon = genreIcon(g); return <Chip key={g} active={has(g)} onClick={() => toggle(g)} className="px-3.5 py-1.5 text-sm">{has(g) && <Icon className="h-4 w-4 shrink-0" aria-hidden />}<span aria-hidden={false}>{g}</span></Chip>; })}
+              {profile.map((g) => { const Icon = genreIcon(g); return <Chip key={g} active={has(g)} onClick={() => toggle(g)}>{has(g) && <Icon className="h-4 w-4 shrink-0" aria-hidden />}<span aria-hidden={false}>{g}</span></Chip>; })}
             </div>
           </div>
         )}
         <div className="flex flex-wrap gap-2">
-          {preset.map((g) => { const Icon = genreIcon(g); return <Chip key={g} active={has(g)} onClick={() => toggle(g)} className="px-4 py-2 text-sm">{has(g) && <Icon className="h-4 w-4 shrink-0" aria-hidden />}{g}</Chip>; })}
+          {preset.map((g) => { const Icon = genreIcon(g); return <Chip key={g} active={has(g)} onClick={() => toggle(g)}>{has(g) && <Icon className="h-4 w-4 shrink-0" aria-hidden />}{g}</Chip>; })}
         </div>
         {custom.length > 0 && (
           <div>
@@ -417,7 +478,7 @@ export function StyleEditor({ song, patch, issues }: { song: SongState; patch: P
             <ul className="flex flex-wrap gap-2" aria-label="Géneros agregados">
               {custom.map((g) => (
                 <li key={g}>
-                  <Chip active onClick={() => toggle(g)} className="px-3.5 py-1.5 text-sm">
+                  <Chip active onClick={() => toggle(g)}>
                     <span>{g}</span>
                     <X className="h-3.5 w-3.5" aria-hidden />
                     <span className="sr-only">Quitar {g}</span>
@@ -485,19 +546,28 @@ export function VoiceEditor({ song, caps, patch, issues, onRecordVoice, onRecrea
         {caps.voices.length === 0 ? (
           <p className="text-xs leading-relaxed text-muted-foreground">Todavía no tenés una voz lista. Grabala una vez y la podés usar en todas tus canciones.</p>
         ) : (
-          caps.voices.map((s) => (
-            <Choice key={s.id} name="voice-pref" checked={v.voiceSampleId === s.id} onSelect={() => patch({ voiceSampleId: s.id, preference: '' })} title={s.name} disabled={Boolean(locks?.customVoice)} description="Voz clonada lista para usar." />
-          ))
+          /* Como «Tus voces» de design-V2: una tarjeta (28/28/14/14) con una fila por voz, separadas por una línea */
+          <div className="rounded-[28px_28px_14px_14px] border-[1.5px] border-border bg-[var(--m-input)] px-3.5 py-1">
+            {caps.voices.map((s) => (
+              <VoiceRow key={s.id} name="voice-pref" checked={v.voiceSampleId === s.id} onSelect={() => patch({ voiceSampleId: s.id, preference: '' })} title={withoutAutoDate(s.name)} disabled={Boolean(locks?.customVoice)} description={s.createdAt ? `Creada el ${formatDateDMY(s.createdAt)}` : undefined} />
+            ))}
+          </div>
         )}
         {/* Disponibilidad de la voz elegida (se consulta al elegirla, no al listar): solo se avisa si el backend confirma que caducó. */}
         <VoiceAvailabilityNotice sampleId={v.voiceSampleId} onRecreate={onRecreateVoice} disabled={Boolean(locks?.voiceCloning)} />
-        <div className="flex flex-wrap items-center gap-3 pt-1">
-          <Button type="button" variant="outline" size="sm" className={cn('rounded-full', locks?.voiceCloning && LOCKED_CONTROL)} onClick={onRecordVoice} aria-disabled={locks?.voiceCloning ? true : undefined}>
-            <Mic2 className="mr-2 h-3.5 w-3.5" aria-hidden /> Grabar mi voz ahora
-            <RequiredPlanBadge capability="VOICE_CLONING" className="ml-2" />
-          </Button>
-          <Link to="/library/voices" className="inline-flex h-10 items-center gap-1.5 rounded-[20px] border-[1.5px] border-primary bg-primary px-[18px] text-sm font-bold text-[#131C33] transition-[filter] hover:brightness-95 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground">
-            Administrar mis voces <ChevronRight className="h-4 w-4" aria-hidden />
+        {/* Los dos botones siempre en la misma fila (en cualquier ancho), del mismo alto y con la misma tipografía */}
+        <div className="flex items-stretch gap-2 pt-1">
+          <button
+            type="button"
+            className={cn('flex min-h-10 min-w-0 flex-1 items-center justify-center gap-1.5 rounded-[20px] border-[1.5px] px-3 py-1.5 text-center text-sm font-bold leading-tight border-line bg-transparent text-foreground transition-colors hover:bg-foreground/10 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground', locks?.voiceCloning && LOCKED_CONTROL)}
+            onClick={onRecordVoice}
+            aria-disabled={locks?.voiceCloning ? true : undefined}
+          >
+            Grabar ahora
+            <RequiredPlanBadge capability="VOICE_CLONING" showCrownOnly />
+          </button>
+          <Link to="/library/voices" className="flex min-h-10 min-w-0 flex-1 items-center justify-center gap-1.5 rounded-[20px] border-[1.5px] px-3 py-1.5 text-center text-sm font-bold leading-tight border-primary bg-primary text-[#131C33] transition-[filter] hover:brightness-95 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground">
+            Administrar mis voces
           </Link>
         </div>
         {(locks?.customVoice || locks?.voiceCloning) && (
@@ -519,22 +589,26 @@ export function ReferenceEditor({ song, caps, patch, issues }: { song: SongState
         <legend className="mb-2 text-sm font-semibold">Elegí un audio de tu biblioteca</legend>
         {caps.references.length === 0 ? (
           <div className="space-y-3">
-            <p className="text-sm text-muted-foreground">Todavía no tenés audios de referencia. Subí uno en tu biblioteca de samples y volvé.</p>
+            <p className="text-sm text-muted-foreground">Todavía no tenés audios de referencia. Subí uno en tu biblioteca de audios y volvé.</p>
             <Link to="/library/samples" className="inline-flex h-10 items-center gap-1.5 rounded-[20px] border-[1.5px] border-primary bg-primary px-[18px] text-sm font-bold text-[#131C33] transition-[filter] hover:brightness-95 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground">
-              Biblioteca de samples <ChevronRight className="h-4 w-4" aria-hidden />
+              Biblioteca de audios <ChevronRight className="h-4 w-4" aria-hidden />
             </Link>
           </div>
         ) : (
-          caps.references.map((s) => (
-            <Choice
-              key={s.id}
-              name="reference"
-              checked={song.reference.sampleId === s.id}
-              onSelect={() => patch({ sampleId: s.id })}
-              title={s.name}
-              description={[s.type?.toLowerCase(), s.durationSec ? `${Math.round(s.durationSec)} s` : ''].filter(Boolean).join(' · ') || undefined}
-            />
-          ))
+          /* Como «Elegir de tu biblioteca» de design-V2: una tarjeta (28/28/14/14) con una fila por audio, separadas por una línea; la elegida lleva un velo del color de acento */
+          <div className="overflow-hidden rounded-[28px_28px_14px_14px] border-[1.5px] border-border bg-[var(--m-input)]">
+            {caps.references.map((s) => (
+              <SampleRow
+                key={s.id}
+                name="reference"
+                checked={song.reference.sampleId === s.id}
+                onSelect={() => patch({ sampleId: s.id })}
+                title={s.name}
+                type={s.type}
+                description={[s.type?.toLowerCase(), s.durationSec ? `${Math.round(s.durationSec)} s` : ''].filter(Boolean).join(' · ') || undefined}
+              />
+            ))}
+          </div>
         )}
         {caps.references.length > 0 && (
           <Link to="/library/samples" className="mt-2 inline-flex h-10 items-center gap-1.5 rounded-[20px] border-[1.5px] border-primary bg-primary px-[18px] text-sm font-bold text-[#131C33] transition-[filter] hover:brightness-95 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground">
@@ -542,21 +616,22 @@ export function ReferenceEditor({ song, caps, patch, issues }: { song: SongState
           </Link>
         )}
       </fieldset>
-      {/* Lista en tarjeta como la de «Perfil» (design-V2): filas con un círculo de icono de borde fino, separadas por líneas suaves */}
+      {/* Tarjeta como la de «Creá tu voz · autorización» de design-V2 (`.lcard.consent` + `.ckeys`) con la forma de la lista de audios (28/28/14/14), 16/18 de relleno (un poco más clara en oscuro) y los puntos con un círculo de 32 px
+          en el azul del planeta Audio (#7B93E8) al 22 %, sin líneas entre ellos */}
       <section className="space-y-3">
         <h3 className="font-display text-lg font-bold">Qué podés esperar</h3>
-        <ul className="overflow-hidden rounded-[28px_28px_14px_14px] border-[1.5px] border-line/60 bg-[var(--m-input)] py-1.5 dark:bg-background">
+        <ul className="flex flex-col gap-3 rounded-[28px_28px_14px_14px] border-[1.5px] border-border bg-[var(--m-input)] px-[18px] py-4 dark:bg-[color-mix(in_srgb,var(--m-foreground)_6%,var(--m-input))]">
           {[
             { icon: Wand2, text: 'Con letra (tuya o escrita por Melodya), Melodya transforma el audio conservando su melodía (hasta 8 minutos). En ese caso no se puede elegir la duración ni las exclusiones.' },
             { icon: Music2, text: 'En un instrumental, el audio se usa solo como guía (entre 6 segundos y 30 minutos). En ese caso tampoco se pueden elegir duración, exclusiones, preferencia vocal ni creatividad.' },
             { icon: Upload, text: 'Subir audios se hace desde tu biblioteca. La grabación directa en la web solo existe para tu voz.' },
             { icon: Info, text: 'El parecido con la referencia depende de Melodya y no está garantizado.' },
-          ].map((it, n, all) => (
-            <li key={n} className={cn('flex items-start gap-3.5 px-4 py-3', n < all.length - 1 && 'border-b border-foreground/10')}>
-              <span aria-hidden className={cn('flex size-[38px] shrink-0 items-center justify-center rounded-full', ['bg-primary text-[#131C33]', 'bg-gold text-[#131C33]', 'bg-voice text-on-voice', 'bg-primary text-[#131C33]'][n % 4])}>
-                <it.icon className="h-[18px] w-[18px]" />
+          ].map((it) => (
+            <li key={it.text} className="flex items-start gap-3">
+              <span aria-hidden className="flex size-8 shrink-0 items-center justify-center rounded-full bg-[color-mix(in_srgb,#7B93E8_22%,transparent)] text-[#7B93E8]">
+                <it.icon className="h-4 w-4" />
               </span>
-              <span className="min-w-0 flex-1 pt-1.5 text-[13px] leading-snug text-muted-foreground">{it.text}</span>
+              <span className="min-w-0 flex-1 pt-1 text-[13px] leading-[1.35] text-foreground/75">{it.text}</span>
             </li>
           ))}
         </ul>
@@ -614,7 +689,7 @@ const VARIETY_LEVELS: Array<{ v: number; label: string; hint: string; icon: Luci
   { v: 4, label: 'Máxima', hint: 'Variación máxima; puede diferir mucho', icon: Flame, tone: 'bg-primary text-[#131C33]' },
 ];
 
-/* Casillero «Automático» con el círculo dorado de la flecha de «continuar» (lo comparten Influencia, Rareza y Variedad) */
+/* Casillero «Automático» con el círculo dorado de la flecha de «continuar» (lo usa Variedad) */
 function AutoToggle({ auto, onToggle }: { auto: boolean; onToggle: () => void }) {
   return (
     <button
@@ -632,20 +707,41 @@ function AutoToggle({ auto, onToggle }: { auto: boolean; onToggle: () => void })
   );
 }
 
+/* «Automático» como en «Creatividad · Avanzado» de design-V2 (`.autoc`): etiqueta de 13 px semibold y un círculo de 28 px con borde del color de texto; al activarlo se llena de dorado con el tilde
+   (lo usan Influencia del estilo, Rareza e Influencia del audio) */
+function AutoCheck({ auto, onToggle }: { auto: boolean; onToggle: () => void }) {
+  return (
+    <button
+      type="button"
+      role="checkbox"
+      aria-checked={auto}
+      onClick={onToggle}
+      className="flex shrink-0 items-center gap-2.5 text-[13px] leading-none font-semibold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground"
+    >
+      Automático
+      <span aria-hidden className={cn('flex size-7 shrink-0 items-center justify-center rounded-full border-[1.5px] transition-colors', auto ? 'border-gold bg-gold text-on-gold' : 'border-on-voice bg-transparent text-transparent')}>
+        <Check className="h-4 w-4" strokeWidth={3} />
+      </span>
+    </button>
+  );
+}
+
 /** `step` en puntos porcentuales (5 por defecto); la Influencia del audio usa 1 = pasos de 0,01. */
 function UnitControl({ id, label, hint, value, onChange, step = 5 }: { id: string; label: string; hint: string; value: number | null; onChange: (v: number | null) => void; step?: number }) {
   const auto = value === null;
   return (
-    /* Cápsula como «Seguí creando» del inicio: pegada al borde izquierdo, tinte terracota; el casillero «Automático» es el círculo dorado de la flecha de «continuar» */
-    <div className="-ml-4 w-[calc(100%+1rem)] space-y-2 rounded-r-[40px] bg-voice py-4 pr-5 pl-5 text-on-voice">
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <Label htmlFor={id} className="font-display text-base font-bold">{label}</Label>
-          <p className="text-[13px] leading-snug text-on-voice/80">{hint}</p>
+    /* Tarjeta como la de «Creatividad · Avanzado» de design-V2 (`.qcard.crea`): fondo azul, 18/20 de relleno y 12 px entre bloques; título de 19 px negrita, ayuda de 14 px al 70 %,
+       «Automático» con su círculo, y el deslizador en dorado con el valor en una píldora de 68 × 28 px */
+    <div className="-ml-4 flex w-[calc(100%+1rem)] flex-col gap-2 rounded-r-[32px] bg-voice py-3 pr-5 pl-5 text-on-voice">
+      <div className="flex flex-col gap-1">
+        <div className="flex items-center justify-between gap-3">
+          <Label htmlFor={id} className="text-[17px] leading-[1.3] font-bold">{label}</Label>
+          <AutoCheck auto={auto} onToggle={() => onChange(auto ? 0.5 : null)} />
         </div>
-        <AutoToggle auto={auto} onToggle={() => onChange(auto ? 0.5 : null)} />
+        {/* La descripción ocupa todo el ancho de la tarjeta (va debajo del título y de «Automático», no al lado) */}
+        <p className="text-sm leading-[1.4] text-on-voice/70">{hint}</p>
       </div>
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-2.5">
         <Slider
           id={id}
           value={[auto ? 65 : Math.round((value as number) * 100)]}
@@ -653,10 +749,10 @@ function UnitControl({ id, label, hint, value, onChange, step = 5 }: { id: strin
           step={step}
           disabled={auto}
           onValueChange={(v) => onChange(Math.round(v[0]) / 100)}
-          className="slider-warm min-w-0 flex-1 cursor-pointer disabled:cursor-not-allowed [&_[data-slot=slider-track]]:bg-on-voice/25!"
+          className={cn('slider-warm min-w-0 flex-1 cursor-pointer disabled:cursor-not-allowed [&_[data-slot=slider-track]]:bg-on-voice/25!', auto && 'opacity-45 grayscale')}
           aria-label={label}
         />
-        <span className="w-12 shrink-0 text-right text-sm tabular-nums">{auto ? 'Auto' : `${Math.round((value as number) * 100)}%`}</span>
+        <span className="grid h-7 min-w-[68px] shrink-0 place-items-center rounded-[14px] bg-on-voice/[0.14] px-2.5 text-[13px] leading-none font-medium whitespace-nowrap tabular-nums">{auto ? 'Auto' : `${Math.round((value as number) * 100)}%`}</span>
       </div>
     </div>
   );
@@ -666,7 +762,7 @@ function UnitControl({ id, label, hint, value, onChange, step = 5 }: { id: strin
 export function CreativityEditor({ song, patch, issues, audioApplies = false }: { song: SongState; patch: Patch<'creativity'>; issues: Issue[]; audioApplies?: boolean }) {
   const k = song.creativity;
   return (
-    <div className="space-y-5">
+    <div className="space-y-3">
       <p className="text-[13px] leading-snug font-semibold text-foreground">
         Son ajustes avanzados que se aplican tal cual en Melodya. Dejalos en automático si no sabés qué buscás: usamos los valores predeterminados de Melodya. Cómo cambian el sonido depende de Melodya y no está garantizado.
       </p>
@@ -676,7 +772,7 @@ export function CreativityEditor({ song, patch, issues, audioApplies = false }: 
         <UnitControl id="cr-audio" label="Influencia del audio" hint="Qué tanto se parece el resultado al audio de referencia que elegiste." value={k.audioWeight} onChange={(v) => patch({ audioWeight: v })} step={1} />
       )}
       {/* Variedad con el estilo del modal «Agregar a tu canción»: filas en pastilla con círculo de color, y el elegido marcado con un visto */}
-      <fieldset className="space-y-3">
+      <fieldset className="space-y-2">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
             <legend className="font-display text-base font-bold">Variedad</legend>
@@ -684,29 +780,30 @@ export function CreativityEditor({ song, patch, issues, audioApplies = false }: 
           </div>
           <AutoToggle auto={k.variety === null} onToggle={() => patch({ variety: k.variety === null ? 1 : null })} />
         </div>
-        <div className="grid gap-2">
+        <div className="grid grid-cols-1 gap-1.5">
           {VARIETY_LEVELS.map((l) => {
             const disabled = k.variety === null;
             const checked = k.variety === l.v;
             return (
+              /* El botón elegido se marca con el borde dorado y el tilde dorado a la derecha, sin relleno; la descripción va adentro, debajo del título */
               <label
                 key={l.v}
                 className={cn(
-                  'flex min-h-14 w-full items-center gap-3 rounded-[28px] border bg-surface-2/40 p-2 pr-4 text-left transition-colors has-[input:focus-visible]:outline-2 has-[input:focus-visible]:outline-offset-2 has-[input:focus-visible]:outline-amber',
-                  checked ? 'border-primary' : 'border-border/70',
-                  disabled ? 'cursor-not-allowed opacity-60' : 'cursor-pointer hover:border-amber/40 hover:bg-surface-2'
+                  'flex min-h-12 w-full min-w-0 items-center gap-3 rounded-3xl border-[1.5px] px-2 py-1.5 pr-4 text-left transition-colors has-[input:focus-visible]:outline-2 has-[input:focus-visible]:outline-offset-2 has-[input:focus-visible]:outline-foreground',
+                  checked ? 'border-gold text-foreground' : 'border-line text-foreground',
+                  disabled ? 'cursor-not-allowed opacity-60' : cn('cursor-pointer', !checked && 'hover:bg-foreground/10')
                 )}
               >
                 <input type="radio" name="variety" disabled={disabled} checked={checked} onChange={() => patch({ variety: l.v })} className="sr-only" />
-                <span aria-hidden className={cn('flex size-10 shrink-0 items-center justify-center rounded-full', l.tone)}>
-                  <l.icon className="h-5 w-5" />
+                <span aria-hidden className="flex size-9 shrink-0 items-center justify-center rounded-full bg-[#E9876F] text-[#131C33]">
+                  <l.icon className="h-[18px] w-[18px]" />
                 </span>
                 <span className="min-w-0 flex-1 leading-tight">
                   <span className="block text-sm font-bold">{l.label}</span>
-                  <span className="line-clamp-2 block text-xs text-muted-foreground">{l.hint}</span>
+                  <span className="mt-0.5 block text-xs leading-snug text-muted-foreground">{l.hint}</span>
                 </span>
                 {checked && (
-                  <span aria-hidden className="flex size-6 shrink-0 items-center justify-center rounded-full bg-success text-background">
+                  <span aria-hidden className="flex size-6 shrink-0 items-center justify-center rounded-full bg-gold text-on-gold">
                     <Check className="h-3.5 w-3.5" strokeWidth={3} />
                   </span>
                 )}

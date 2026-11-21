@@ -251,7 +251,7 @@ const BOOLEAN_LINES: Array<[string, string]> = [
   ['COVER_ART', 'Portadas para tus canciones'],
   ['LYRICS_AI', 'Asistente de letras de Melodya'],
   ['LYRIC_PERSONAS', 'Letristas personalizados'],
-  ['AUDIO_REFERENCE', 'Audio de referencia'],
+  ['AUDIO_REFERENCE', 'Audio'],
   ['PRODUCTION_CONTROLS', 'Planeta Producción'],
   ['CREATIVITY_SETTINGS', 'Planeta Creatividad'],
   ['VOICE_CLONING', 'Clonar tu voz'],

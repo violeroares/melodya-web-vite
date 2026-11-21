@@ -77,17 +77,22 @@ export function CoverArt({
 }
 
 /* ── Chip / tag ── */
-export function Chip({ children, className, onClick, active }: { children: React.ReactNode; className?: string; onClick?: () => void; active?: boolean }) {
+export function Chip({ children, className, onClick, active, title }: { children: React.ReactNode; className?: string; onClick?: () => void; active?: boolean; title?: string }) {
   const Comp = onClick ? 'button' : 'span';
   return (
     <Comp
       onClick={onClick}
+      title={title}
+      aria-pressed={onClick && active !== undefined ? active : undefined}
       className={cn(
-        'inline-flex items-center gap-1.5 rounded-full border-[1.5px] px-3 py-1 text-xs font-medium transition-colors',
+        /* design-V2 · `.chip`: 40 px de alto, 20 px de radio, borde de 1,5 px, 16 px de relleno, Figtree 500 14/1.2. Elegido: relleno `--m-selected`
+           (azul en claro, crema en oscuro), texto `--m-on-selected` en 700. El texto nunca se corta: si no entra, el chip pasa a la fila de abajo. */
+        'inline-flex h-10 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full border-[1.5px] px-4 text-sm font-medium leading-[1.2] transition-colors',
         active
-          ? 'border-primary bg-primary font-bold text-primary-foreground'
-          : 'border-line bg-transparent text-foreground hover:bg-accent',
-        onClick && 'min-h-10 cursor-pointer px-4 text-sm',
+          ? 'border-selected bg-selected font-bold text-on-selected'
+          : 'border-line bg-transparent text-foreground',
+        onClick && 'cursor-pointer',
+        onClick && !active && 'hover:bg-foreground/10',
         className
       )}
     >

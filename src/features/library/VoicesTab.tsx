@@ -29,7 +29,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { ConfirmDialog, InlineError, SamplePlayButton, ViewToggle, useViewMode } from './library-utils';
+import { ConfirmDialog, InlineError, PencilSolid, SamplePlayButton, TrashSolid, ViewToggle, useViewMode } from './library-utils';
 import { VoiceCloneDialog } from '@/features/voice/VoiceCloneDialog';
 import { useVoiceAvailability } from '@/features/voice/VoiceAvailabilityNotice';
 import { voiceCardStatus, type VoiceCardStatus } from '@/features/voice/voice-expiry';
@@ -259,74 +259,121 @@ export function VoicesTab() {
             title="Muestras sin clonar"
             subtitle="Subiste estas tomas pero todavía no completaste la verificación."
           />
-          <div className={cn(list ? 'flex flex-col gap-2' : 'grid grid-cols-[minmax(0,1fr)] gap-3 xl:grid-cols-2')}>
-            {pending.map((sample) => (
-              /* Mismo formato que las cards de Samples: ícono + título con la fecha debajo, y a la derecha las acciones (play y menú de 3 puntos) */
-              <article
-                key={sample.id}
-                className="flex flex-nowrap items-center gap-x-3 rounded-cover border border-border/70 bg-surface p-3 transition-colors hover:border-amber/40 max-sm:gap-x-2 max-sm:p-2.5"
-              >
-                <div className="flex min-w-0 flex-1 basis-0 items-center gap-3 max-sm:gap-2">
-                  <div className="flex size-11 shrink-0 items-center justify-center rounded-full bg-element-sound text-[#131C33] max-sm:size-9" aria-hidden>
-                    <AudioLines className="h-[22px] w-[22px] max-sm:h-[18px] max-sm:w-[18px]" />
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <h3 className="truncate text-sm font-semibold text-foreground">{sample.name}</h3>
-                    <p className="text-xs whitespace-nowrap text-muted-foreground first-letter:uppercase">{formatRelative(sample.createdAt)}</p>
-                  </div>
-                </div>
-                <div className="flex shrink-0 items-center justify-end gap-1 max-sm:gap-0.5">
-                  <Button
-                    size="sm"
-                    className={cn('mr-1 rounded-full gradient-warm text-primary-foreground hover:text-primary-foreground max-sm:h-8 max-sm:px-3 max-sm:text-xs max-[420px]:size-8 max-[420px]:gap-0 max-[420px]:px-0', cloneLocked && '!bg-none border border-dashed border-amber/50 !bg-transparent !text-muted-foreground')}
-                    aria-label="Clonar mi voz"
-                    title={cloneLocked ? LOCK_REASON.VOICE_CLONING : undefined}
-                    aria-disabled={cloneLocked || undefined}
-                    disabled={resuming?.id === sample.id}
-                    onClick={() => void startClone(sample)}
-                  >
-                    {resuming?.id === sample.id ? (
-                      <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
-                    ) : (
-                      <Mic2 className="h-4 w-4" aria-hidden />
-                    )}
-                    <span className="max-[420px]:sr-only">Clonar mi voz</span>
-                    <RequiredPlanBadge capability="VOICE_CLONING" className="max-[420px]:hidden" />
-                  </Button>
-                  <SamplePlayButton
-                    id={sample.id}
-                    name={sample.name}
-                    className="shrink-0 max-sm:size-9"
-                    track={() => ({
-                      id: sample.id,
-                      title: sample.name,
-                      artist: 'Sample de voz',
-                      coverUrl: null,
-                      audioUrl: apiFileUrl(sample.fileUrl) ?? '',
-                      kind: 'sample',
-                      isPublic: false, // los samples son privados (del dueño): descarga autenticada desde el primer intento, sin pedido anónimo
-                      durationSec: sample.durationSec,
-                    })}
-                  />
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <button
-                        type="button"
-                        aria-label={`Opciones de ${sample.name}`}
-                        className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors max-sm:h-7 max-sm:w-7 hover:bg-surface-2 hover:text-foreground focus-visible:outline-2 focus-visible:outline-foreground"
+          <div className={cn(list ? 'flex flex-col gap-2' : 'grid gap-3 sm:grid-cols-2 xl:grid-cols-3')}>
+            {pending.map((sample) => {
+              const cloneBusy = resuming?.id === sample.id;
+              const playBtn = (
+                <SamplePlayButton
+                  id={sample.id}
+                  name={sample.name}
+                  className={cn('shrink-0', list ? 'max-sm:size-9 sm:size-9' : 'size-11 [&_svg]:size-[18px]')}
+                  track={() => ({
+                    id: sample.id,
+                    title: sample.name,
+                    artist: 'Audio de voz',
+                    coverUrl: null,
+                    audioUrl: apiFileUrl(sample.fileUrl) ?? '',
+                    kind: 'sample',
+                    isPublic: false, // los samples son privados (del dueño): descarga autenticada desde el primer intento, sin pedido anónimo
+                    durationSec: sample.durationSec,
+                  })}
+                />
+              );
+              const dotsMenu = (
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <button
+                      type="button"
+                      aria-label={`Opciones de ${sample.name}`}
+                      className={cn(
+                        'flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-surface-2 hover:text-foreground focus-visible:outline-2 focus-visible:outline-foreground',
+                        list && 'sm:hidden'
+                      )}
+                    >
+                      <MoreVertical className="h-4 w-4" aria-hidden />
+                    </button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" variant="list">
+                    {/* Grilla y lista en mobile: «Clonar mi voz» y la Papelera viven dentro del menú; en lista (≥640 px) son botones a la vista */}
+                    {(
+                      <DropdownMenuItem
+                        disabled={cloneBusy}
+                        title={cloneLocked ? LOCK_REASON.VOICE_CLONING : undefined}
+                        aria-disabled={cloneLocked || undefined}
+                        onClick={() => void startClone(sample)}
                       >
-                        <MoreVertical className="h-4 w-4" aria-hidden />
-                      </button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end" variant="list">
-                      <DropdownMenuItem onClick={() => setToDelete(sample)} className="text-destructive focus:text-destructive">
-                        <Trash2 className="h-4 w-4" aria-hidden /> Enviar a la Papelera
+                        {cloneBusy ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <Mic2 className="h-4 w-4" aria-hidden />}
+                        Clonar mi voz
+                        <RequiredPlanBadge capability="VOICE_CLONING" />
                       </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                </div>
-              </article>
-            ))}
+                    )}
+                    <DropdownMenuItem onClick={() => setToDelete(sample)} className="text-destructive focus:text-destructive">
+                      <Trash2 className="h-4 w-4" aria-hidden /> Enviar a la Papelera
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              );
+              return (
+                /* Mismo formato que las cards de «Mis voces» y de Audios: ícono, título con la fecha debajo, y las acciones */
+                <article
+                  key={sample.id}
+                  className={cn(
+                    '@container group relative h-full rounded-cover border border-[var(--m-border)] bg-[var(--m-input)] p-4 transition-colors hover:border-amber/40',
+                    list && 'flex flex-col sm:flex-row sm:items-center sm:gap-4'
+                  )}
+                >
+                  <div className={list ? 'contents' : 'grid grid-cols-[2.75rem_minmax(0,1fr)_auto] content-start gap-x-3 gap-y-2.5'}>
+                    <div className={cn('flex min-w-0 items-center gap-3', list ? 'pr-[5.5rem] sm:flex-1 sm:pr-0' : 'contents')}>
+                      <div
+                        className={cn('flex size-11 shrink-0 items-center justify-center rounded-full bg-element-sound text-[#131C33] max-sm:size-9', !list && 'col-start-1 row-start-1 max-sm:size-11')}
+                        aria-hidden
+                      >
+                        <AudioLines className="h-[22px] w-[22px] max-sm:h-[18px] max-sm:w-[18px]" />
+                      </div>
+                      <div className={cn('min-w-0', list ? 'flex-1' : 'col-span-3 row-start-2 @[18rem]:col-span-1 @[18rem]:col-start-2 @[18rem]:row-start-1 @[18rem]:self-center')}>
+                        <h3 className="truncate font-display text-lg font-bold leading-[1.2] text-foreground">{sample.name}</h3>
+                        <p className="mt-0.5 text-[13px] leading-[1.35] text-muted-foreground first-letter:uppercase">{formatRelative(sample.createdAt)}</p>
+                      </div>
+                    </div>
+                    {list ? (
+                      <div className="flex items-center gap-3 max-sm:absolute max-sm:top-3 max-sm:right-3 max-sm:gap-0.5 sm:shrink-0">
+                        <Button
+                          size="sm"
+                          className={cn('h-10 shrink-0 gap-2 rounded-full border-[1.5px] border-line bg-transparent px-4 text-[15px] font-bold tracking-[.02em] text-foreground shadow-none [background-image:none] hover:bg-foreground/10 hover:text-foreground max-sm:hidden', cloneLocked && 'border-dashed border-amber/50 text-muted-foreground')}
+                          aria-label="Clonar mi voz"
+                          title={cloneLocked ? LOCK_REASON.VOICE_CLONING : undefined}
+                          aria-disabled={cloneLocked || undefined}
+                          disabled={cloneBusy}
+                          onClick={() => void startClone(sample)}
+                        >
+                          {cloneBusy ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <Mic2 className="h-4 w-4" aria-hidden />}
+                          <span>Clonar mi voz</span>
+                          <RequiredPlanBadge capability="VOICE_CLONING" />
+                        </Button>
+                        {playBtn}
+                        {dotsMenu}
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          aria-label={`Enviar a la Papelera: ${sample.name}`}
+                          title="Enviar a la Papelera"
+                          className="size-9 rounded-full border-[1.5px] border-foreground text-foreground hover:bg-foreground/10 hover:text-foreground max-sm:hidden"
+                          onClick={() => setToDelete(sample)}
+                        >
+                          <TrashSolid className="h-[18px] w-[18px]" aria-hidden />
+                        </Button>
+                      </div>
+                    ) : (
+                      /* Grilla: play delante de los 3 puntos, arriba a la derecha (como en Audios) */
+                      <div className="col-start-3 row-start-1 flex items-center gap-0.5 self-start justify-self-end">
+                        {playBtn}
+                        {dotsMenu}
+                      </div>
+                    )}
+                  </div>
+                </article>
+              );
+            })}
           </div>
         </section>
       )}
@@ -416,43 +463,48 @@ function VoiceCard({ sample, onEdit, onDelete, onRecreate, list = false }: { sam
   return (
     <article
       className={cn(
-        'group flex h-full flex-col rounded-cover border border-border/70 bg-surface p-4 transition-colors hover:border-amber/40',
-        list && 'p-3 sm:flex-row sm:items-center sm:gap-4'
+        'group relative flex h-full flex-col rounded-cover border border-[var(--m-border)] bg-[var(--m-input)] p-4 transition-colors hover:border-amber/40',
+        /* Lista: <640 columna; 640–1023 dos filas (encabezado + acciones, y debajo descripción y etiquetas); ≥1024 una sola fila. */
+        list && 'sm:grid sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center sm:gap-x-4 lg:flex lg:flex-row'
       )}
     >
-      <div className={cn('flex items-start gap-3', list && 'sm:w-72 sm:shrink-0 sm:items-center')}>
+      <div className={cn('flex items-start gap-3', list ? 'min-w-0 sm:col-start-1 sm:row-start-1 sm:items-center lg:w-72 lg:shrink-0' : '')}>
         <AuthAvatar
           src={sample.avatarUrl}
           name={sample.name}
-          className="h-12 w-12 border-amber/30"
-          fallbackClassName="font-display text-sm font-extrabold"
+          className={cn('size-16 shrink-0 border-0', expired && 'opacity-55')}
+          fallbackClassName="bg-[#F0A44B] font-display text-lg font-extrabold text-[#131C33]"
         />
         <div className="min-w-0 flex-1">
           {/* El chip va en la fila del nombre (no como columna aparte) para que el mensaje de abajo use todo el ancho del bloque. */}
-          <div className="flex items-center gap-2">
-            <h3 className="min-w-0 flex-1 truncate text-sm font-semibold text-foreground">{sample.name}</h3>
-            <span className={cn('inline-flex shrink-0 items-center gap-1 rounded-full border px-2 py-0.5 text-xs font-medium', info.className)} data-voice-status={status}>
+          <div className={cn('flex items-center gap-2', list ? 'max-sm:pr-9' : 'pr-9')}>
+            <h3 className="min-w-0 flex-1 truncate font-display text-lg font-bold leading-[1.2] text-foreground">{sample.name}</h3>
+          </div>
+          <p className="mt-0.5 flex flex-wrap items-center gap-x-1.5 text-[13px] leading-[1.35] text-muted-foreground">
+            {/* Estado delante de la fecha, en la misma fila y con el estilo del mensaje de abajo */}
+            <span className={cn('inline-flex items-center gap-1 font-medium', expired && 'text-destructive')} data-voice-status={status}>
               {status === 'checking' && <Loader2 className="h-3 w-3 animate-spin" aria-hidden />}
               {status === 'available' && <CheckCircle2 className="h-3 w-3" aria-hidden />}
               {status === 'expired' && <CircleAlert className="h-3 w-3" aria-hidden />}
               {status === 'unverified' && <CircleHelp className="h-3 w-3" aria-hidden />}
               {info.chip}
             </span>
-          </div>
-          <p className="text-xs text-muted-foreground">Creada {formatRelative(sample.createdAt)}</p>
-          <p className={cn('mt-0.5 text-[11px] leading-snug', expired ? 'font-medium text-destructive' : 'text-muted-foreground')}>{info.text}</p>
+            <span aria-hidden>·</span>
+            <span>Creada {formatRelative(sample.createdAt)}</span>
+          </p>
+          <p className="mt-0.5 text-[12px] leading-[1.2] text-foreground">{info.text}</p>
         </div>
         {/* Anuncia los cambios de estado a lectores de pantalla (el chip y el texto visibles cambian junto con este). */}
         <span className="sr-only" role="status" aria-live="polite">{`${sample.name}: ${info.chip}. ${info.text}`}</span>
       </div>
 
       {sample.description && (
-        <p className={cn('mt-2 line-clamp-2 text-xs leading-relaxed text-muted-foreground', list && 'sm:mt-0 sm:min-w-0 sm:flex-1')}>{sample.description}</p>
+        <p className={cn('mt-2 line-clamp-2 text-[13px] leading-snug text-muted-foreground', list && 'sm:col-span-2 lg:col-span-1 lg:mt-0 lg:min-w-0 lg:flex-1')}>{sample.description}</p>
       )}
       {!!sample.tags?.length && (
-        <p className={cn('mt-2 flex flex-wrap gap-1.5', list && 'sm:mt-0 sm:max-w-64')}>
+        <p className={cn('mt-2 flex flex-wrap gap-1.5', list && 'sm:col-span-2 lg:col-span-1 lg:mt-0 lg:max-w-64')}>
           {sample.tags.slice(0, 4).map((t) => (
-            <span key={t} className="rounded-full border border-amber/30 bg-amber/10 px-2 py-0.5 text-[11px] text-amber-strong">
+            <span key={t} className="rounded-full border border-muted-foreground px-[9px] py-[3px] text-xs leading-none font-medium text-foreground">
               {t}
             </span>
           ))}
@@ -462,39 +514,61 @@ function VoiceCard({ sample, onEdit, onDelete, onRecreate, list = false }: { sam
         </p>
       )}
 
-      <div className={cn('mt-3 flex items-center justify-end gap-2 border-t border-border/60 pt-3 sm:justify-start', list && 'sm:mt-0 sm:ml-auto sm:shrink-0 sm:border-t-0 sm:pt-0')}>
+      <div className={cn('mt-3 flex items-center justify-end gap-3 sm:justify-start', list ? 'max-sm:hidden sm:col-start-2 sm:row-start-1 sm:mt-0 sm:justify-end lg:ml-auto lg:shrink-0' : 'hidden')}>
+        {/* Recrear va primero, con el estilo del botón de Biblioteca › Voces (píldora con borde fino y texto), conservando su icono. */}
+        <Button
+          variant="ghost"
+          aria-label={`Recrear la voz ${sample.name}`}
+          title="Recrear la voz (las voces clonadas son temporales: se recrea con tu grabación original y una frase nueva)"
+          className="h-10 shrink-0 gap-2 rounded-full border-[1.5px] border-line px-4 text-[15px] font-bold tracking-[.02em] text-foreground hover:bg-foreground/10 hover:text-foreground"
+          onClick={onRecreate}
+        >
+          <RefreshCw className="h-4 w-4" aria-hidden />
+          <span>Recrear</span>
+        </Button>
         <Button
           variant="ghost"
           size="icon"
           aria-label={`Editar ${sample.name}`}
-          className="h-9 w-9 rounded-full text-muted-foreground hover:text-foreground"
+          className="size-9 rounded-full border-[1.5px] border-foreground text-foreground hover:bg-foreground/10 hover:text-foreground"
           onClick={onEdit}
         >
-          <Pencil className="h-4 w-4" aria-hidden />
-        </Button>
-        {/* Voz caducada: la acción pasa a ser un botón con texto y color propio; en cualquier otro estado sigue siendo el ícono discreto. */}
-        <Button
-          variant={expired ? 'default' : 'ghost'}
-          size={expired ? 'sm' : 'icon'}
-          aria-label={`Recrear la voz ${sample.name}`}
-          title="Recrear la voz (las voces clonadas son temporales: se recrea con tu grabación original y una frase nueva)"
-          className={expired ? 'rounded-full gradient-warm text-primary-foreground hover:text-primary-foreground' : 'h-9 w-9 rounded-full text-muted-foreground hover:text-foreground'}
-          onClick={onRecreate}
-        >
-          <RefreshCw className="h-4 w-4" aria-hidden />
-          {expired && <span>Recrear</span>}
+          <PencilSolid className="h-[18px] w-[18px]" aria-hidden />
         </Button>
         <Button
           variant="ghost"
           size="icon"
           aria-label={`Quitar la voz ${sample.name}`}
           title="Quitar la voz (la grabación se conserva)"
-          className="h-9 w-9 rounded-full text-muted-foreground hover:text-destructive"
+          className="size-9 rounded-full border-[1.5px] border-foreground text-foreground hover:bg-foreground/10 hover:text-foreground"
           onClick={onDelete}
         >
-          <Trash2 className="h-4 w-4" aria-hidden />
+          <TrashSolid className="h-[18px] w-[18px]" aria-hidden />
         </Button>
       </div>
+      {/* Grilla y lista en mobile (<640 px): editar, recrear y quitar dentro del menú de 3 puntos, arriba a la derecha */}
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <button
+              type="button"
+              aria-label={`Opciones de ${sample.name}`}
+              className={cn('absolute top-3 right-3 flex h-8 w-8 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-surface-2 hover:text-foreground focus-visible:outline-2 focus-visible:outline-foreground', list && 'sm:hidden')}
+            >
+              <MoreVertical className="h-4 w-4" aria-hidden />
+            </button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" variant="list">
+            <DropdownMenuItem onClick={onEdit}>
+              <Pencil className="h-4 w-4" aria-hidden /> Editar
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={onRecreate} title="Recrear la voz (las voces clonadas son temporales: se recrea con tu grabación original y una frase nueva)">
+              <RefreshCw className="h-4 w-4" aria-hidden /> Recrear
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={onDelete} className="text-destructive focus:text-destructive">
+              <Trash2 className="h-4 w-4" aria-hidden /> Quitar la voz
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
     </article>
   );
 }
@@ -554,7 +628,11 @@ function EditVoiceDialog({ sample, onClose }: { sample: UserSample | null; onClo
     try {
       // La foto se sube y se guarda al instante (como siempre); el diálogo sigue abierto y no toca lo que el usuario escribió.
       const updated = await samplesApi.setAvatar(sample.id, file);
-      setNewAvatarUrl(updated.avatarUrl);
+      // Si la respuesta no trae la URL de la foto, se pide la voz de nuevo (así el diálogo muestra la foto nueva igual que la card).
+      let url = updated?.avatarUrl ?? (await samplesApi.get(sample.id)).avatarUrl ?? null;
+      // Si el servidor reutiliza la misma URL, se fuerza la recarga para no mostrar la imagen anterior guardada en caché.
+      if (url && url === (newAvatarUrl ?? sample.avatarUrl)) url += (url.includes('?') ? '&' : '?') + 'v=' + Date.now();
+      setNewAvatarUrl(url);
       void qc.invalidateQueries({ queryKey: ['samples'] });
       toast({ title: 'Foto actualizada' });
     } catch (err) {
@@ -754,8 +832,12 @@ function VoiceSessionCard({
   return (
     <article className="rounded-[28px_28px_14px_14px] border-[1.5px] border-border bg-surface p-4 sm:p-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-2">
-          <span className="text-xs text-muted-foreground">Sesión del {new Date(session.createdAt).toLocaleDateString('es-AR', { day: 'numeric', month: 'short' })}</span>
+        <div className="flex items-center gap-3">
+          {/* Como el encabezado del modal «Crear voz»: círculo del color del planeta Voz con el micrófono y el título en la fuente de títulos */}
+          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#F0A44B] text-[#131C33]" aria-hidden>
+            <Mic2 className="h-5 w-5" />
+          </span>
+          <span className="font-display text-lg font-bold text-foreground">Sesión del {new Date(session.createdAt).toLocaleDateString('es-AR', { day: 'numeric', month: 'short' })}</span>
         </div>
         <span
           className={cn(
@@ -772,29 +854,19 @@ function VoiceSessionCard({
         </span>
       </div>
 
-      {/* Paso a paso como en el modal «Crear voz»: círculos numerados con línea de unión y etiqueta chica en mayúsculas */}
-      <ol className="mt-4 grid grid-cols-4 gap-2" aria-label="Progreso de la clonación">
+      {/* Paso a paso como en el modal «Crear voz» (`.csteps` de design-V2): una barra de 3 px por paso, en el color del planeta Voz hasta el paso actual,
+          con la etiqueta debajo en 13 px (la del paso actual en el color de texto, las demás en el secundario). */}
+      <ol className="mt-4 flex gap-1.5" aria-label="Progreso de la clonación">
         {stepLabels.map((label, i) => {
           const isDone = i < done;
           const current = i === done && status !== 'FAILED';
           return (
-            <li key={label} aria-current={current ? 'step' : undefined} className="flex min-w-0 flex-col items-center gap-1.5 sm:flex-row sm:gap-2">
-              <span
-                className={cn(
-                  'flex size-6 shrink-0 items-center justify-center rounded-full text-xs font-bold',
-                  current ? 'bg-primary text-primary-foreground' : isDone ? 'bg-success text-background' : 'border-[1.5px] border-line text-muted-foreground'
-                )}
-                aria-hidden
-              >
-                {isDone ? <Check className="h-3.5 w-3.5" strokeWidth={3} /> : i + 1}
-              </span>
-              <span className={cn('truncate text-[11.5px] tracking-[0.08em] uppercase', current ? 'font-bold text-label' : isDone ? 'font-semibold text-foreground' : 'font-medium text-muted-foreground')}>
+            <li key={label} aria-current={current ? 'step' : undefined} className={cn('flex min-w-0 flex-1 flex-col gap-2 text-[13px] leading-[1.35]', current ? 'text-foreground' : 'text-muted-foreground')}>
+              <span aria-hidden className={cn('h-[3px] rounded-sm', isDone || current ? 'bg-[#F0A44B]' : 'bg-faint')} />
+              <span className="truncate">
                 {label}
                 <span className="sr-only">{current ? ' (paso actual)' : isDone ? ' (completado)' : ''}</span>
               </span>
-              {i < stepLabels.length - 1 && (
-                <span className={cn('ml-1 hidden h-px flex-1 rounded-full sm:block', isDone ? 'bg-success' : 'bg-faint')} aria-hidden />
-              )}
             </li>
           );
         })}
@@ -810,12 +882,14 @@ function VoiceSessionCard({
         )}
 
         {status === 'PHRASE_READY' && phrase && (
-          <div className="rounded-2xl border border-amber/40 bg-amber/10 p-4 sm:p-5">
-            <p className="flex items-center gap-1.5 text-xs font-semibold tracking-wide text-amber-strong uppercase">
-              <Volume2 className="h-3.5 w-3.5" aria-hidden /> Necesitamos verificar que sos vos
-            </p>
-            <p className="mt-1 text-sm leading-relaxed text-foreground/90">{PHRASE_INSTRUCTION}</p>
-            <p className="mt-2 font-display text-xl leading-snug text-foreground sm:text-2xl">“{phrase}”</p>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <p className="flex items-center gap-1.5 font-display text-base font-bold">
+                <Volume2 className="h-4 w-4 shrink-0 text-gold" aria-hidden /> Necesitamos verificar que sos vos
+              </p>
+              <p className="text-base leading-[1.4] text-muted-foreground">{PHRASE_INSTRUCTION}</p>
+            </div>
+            <p className="rounded-[20px_20px_6px_6px] border-[1.5px] border-line bg-[var(--m-input)] px-[18px] py-4 font-display text-[22px] leading-[1.35] font-bold text-foreground">“{phrase}”</p>
           </div>
         )}
 
@@ -873,7 +947,7 @@ function VoiceSessionCard({
             )}
             <div className="flex flex-wrap items-center justify-center gap-2">
               {session.voiceSampleId && !otherActiveForSample && (
-                <Button variant="outline" size="sm" className="rounded-full" disabled={retrying || deleting} onClick={() => void retry()}>
+                <Button variant="outline" size="sm" className="rounded-full border-[1.5px] border-line bg-transparent font-medium text-foreground hover:bg-accent" disabled={retrying || deleting} onClick={() => void retry()}>
                   {retrying ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <Mic2 className="h-4 w-4" aria-hidden />}
                   Volver a intentar
                 </Button>
