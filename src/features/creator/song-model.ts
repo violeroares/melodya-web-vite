@@ -207,6 +207,27 @@ export function updatePlanet<K extends 'composition' | 'style' | 'voice' | 'refe
   return next;
 }
 
+/* ───────── «Sugerime una idea» (Composición) ───────── */
+
+/** Pedido al asistente: SÓLO la idea. Género, descripción de estilo y demás campos nunca se piden ni se aplican desde acá. */
+export function suggestIdeaRequest(): { draft: Record<string, unknown>; missing: string[] } {
+  return { draft: {}, missing: ['IDEA'] };
+}
+
+/** La idea de la respuesta del asistente (`suggestions.IDEA`), o '' si falta o no es texto. */
+export function pickSuggestedIdea(suggestions: Record<string, unknown> | null | undefined): string {
+  const idea = suggestions?.IDEA;
+  return typeof idea === 'string' ? idea : '';
+}
+
+/**
+ * Aplica la idea sugerida: reemplaza `composition.idea` (como al pedir otra sugerencia) y NO toca nada más, en particular nada de Estilo.
+ * Una idea vacía o en blanco no altera el borrador (devuelve el mismo estado).
+ */
+export function applySuggestedIdea(s: SongState, idea: string): SongState {
+  return idea.trim() ? updatePlanet(s, 'composition', { idea }) : s;
+}
+
 /**
  * Incorpora la letra (y su título) que produjo el Estudio de letras. La letra pasa a ser la del usuario. El título de la
  * letra se transfiere al creador SOLO si el usuario no había escrito uno: queda editable y es el que se envía como `title`.

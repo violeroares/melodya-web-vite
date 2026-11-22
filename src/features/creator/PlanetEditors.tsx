@@ -27,7 +27,7 @@ import { Slider } from '@/components/ui/slider';
 import { SavedLyricsPickerDialog } from './SavedLyricsPickerDialog';
 import { VoiceAvailabilityNotice } from '@/features/voice/VoiceAvailabilityNotice';
 import {
-  LIMITS, MOODS, applyLyricsFromStudio, addGenresFromText, removeGenre, genreKey, styleUsage, ideaJoinsStyle,
+  LIMITS, MOODS, applyLyricsFromStudio, addGenresFromText, removeGenre, genreKey, styleUsage, ideaJoinsStyle, suggestIdeaRequest, pickSuggestedIdea,
   type SongState, type Capabilities, type Issue, type CompositionMode, type PlanetId,
 } from './song-model';
 
@@ -260,7 +260,8 @@ export function ExpandableLyrics({ id, value, onChange, description, placeholder
 
 export function CompositionEditor({ song, patch, onOpenStudio, issues, onApplySuggestion, locks, lockedTitle }: {
   song: SongState; patch: Patch<'composition'>; onOpenStudio: () => void; issues: Issue[];
-  onApplySuggestion: (idea: string, genres: string[]) => void;
+  /** «Sugerime una idea»: recibe sólo la idea; Estilo no se toca. */
+  onApplySuggestion: (idea: string) => void;
   /** «Otra versión»: el título de la canción original, que se conserva y no se edita (el backend no acepta `title` junto con `songId`). */
   lockedTitle?: string;
   /** Capacidades que el plan no incluye (E5): sin asistente de letras no hay sugerencias, pero el modo «idea» sigue disponible. */
@@ -284,13 +285,8 @@ export function CompositionEditor({ song, patch, onOpenStudio, issues, onApplySu
     }
     setSuggesting(true);
     try {
-      const res = await assistantApi.suggestions({ draft: {}, missing: ['IDEA', 'GENRE'] });
-      const idea = res.suggestions.IDEA;
-      const genre = res.suggestions.GENRE;
-      onApplySuggestion(
-        typeof idea === 'string' ? idea : '',
-        typeof genre === 'string' ? [genre] : Array.isArray(genre) ? genre.filter((g): g is string => typeof g === 'string') : []
-      );
+      const res = await assistantApi.suggestions(suggestIdeaRequest());
+      onApplySuggestion(pickSuggestedIdea(res.suggestions));
       toast({ title: '✨ Idea sugerida', description: 'Editála o probá otra semilla.' });
     } catch (err) {
       toast({ title: 'No pudimos sugerir', description: toUserMessage(err), variant: 'destructive' });
