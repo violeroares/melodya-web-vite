@@ -59,8 +59,8 @@ import { SolarSystem, planetIcon, PLANET_DOT } from './SolarSystem';
 import { CompositionEditor, StyleEditor, VoiceEditor, ReferenceEditor, ProductionEditor, CreativityEditor } from './PlanetEditors';
 import {
   emptySong, isEmptySong, parseSong, audioWeightApplies, availability, addPlanet, removePlanet, updatePlanet, validateSong,
-  hasErrors, summarize, describeTreatment, applyLyricsFromStudio, buildGenerationRequest, planetDef, activePlanets, hasStyleInputs,
-  type SongState, type PlanetId, type Capabilities,
+  hasErrors, summarize, describeTreatment, applyLyricsFromStudio, buildGenerationRequest, planetDef, activePlanets, isBasePlanetEmpty, pendingBasePlanets,
+  type SongState, type PlanetId, type Capabilities, type BaseOpened,
 } from './song-model';
 
 type FocusKey = PlanetId | 'add';
@@ -265,20 +265,20 @@ export function CreatorWizard() {
     window.addEventListener('resize', onResize);
     return () => window.removeEventListener('resize', onResize);
   }, [openPlanet]);
-  /* Composición y Estilo están siempre en el sistema: se dibujan punteados mientras no tienen nada (o se están completando) y se rellenan con «Listo». */
-  const [baseConfirmed, setBaseConfirmed] = useState<PlanetId[]>([]);
-  const [baseEditing, setBaseEditing] = useState<PlanetId | null>(null);
-  const baseEmpty = (id: PlanetId) => id === 'composition'
-    ? !song.composition.idea.trim() && !song.composition.lyrics.trim() && !song.composition.title.trim()
-    : !hasStyleInputs(song);
-  const basePending = (['composition', 'style'] as PlanetId[]).filter((id) => !baseConfirmed.includes(id) && (baseEmpty(id) || (baseEditing === id && openPlanet === id)));
+  /* Composición y Estilo están siempre en el sistema: se dibujan punteados mientras no tienen configuración y se rellenan cuando la tienen. El
+     estado se DERIVA de la configuración actual (isBasePlanetEmpty): no hay un «confirmado» guardado, así que al vaciarlos y pulsar «Listo»
+     vuelven al instante a punteado, y reiniciar o cambiar de canción no arrastra nada. Mientras un planeta está abierto conserva el aspecto
+     que tenía al abrirlo (punteado si estaba vacío, relleno si no) y se actualiza al cerrarlo. */
+  const [baseOpened, setBaseOpened] = useState<BaseOpened | null>(null);
+  const baseEmpty = (id: PlanetId) => isBasePlanetEmpty(song, id);
+  const basePending = pendingBasePlanets(song, baseOpened, openPlanet);
   // Mientras se lee la configuración de la versión de origen no se edita: así nada de lo que escriba el usuario compite con esa respuesta.
   const openEditor =(id: PlanetId) => {
     if (versionPending) return;
     returnFocusTo.current = id;
     measureSheet();
-    // Composición/Estilo vacíos: quedan punteados mientras se edita y hasta apretar «Listo»
-    setBaseEditing(id === 'composition' || id === 'style' ? (baseEmpty(id) ? id : null) : null);
+    // Composición/Estilo conservan mientras se edita el aspecto que tenían al abrirlos; al cerrar se recalcula de la configuración
+    setBaseOpened(id === 'composition' || id === 'style' ? { id, empty: baseEmpty(id) } : null);
     setOpenPlanet(id);
   };
   const openCatalog =() => { if (versionPending) return; returnFocusTo.current = 'add'; setCatalogOpen(true); };
@@ -313,7 +313,6 @@ export function CreatorWizard() {
   const confirmPlanet = () => {
     if (openPlanet) {
       setPendingPlanets((p) => p.filter((x) => x !== openPlanet));
-      if (openPlanet === 'composition' || openPlanet === 'style') setBaseConfirmed((c) => (c.includes(openPlanet) ? c : [...c, openPlanet]));
     }
     setOpenPlanet(null);
   };
@@ -330,7 +329,6 @@ export function CreatorWizard() {
   const restart = () => {
     if (recoveryActive) rec.end('DISMISSED'); // descartar la recuperación NO borra la generación fallida: sigue en el historial
     setNormalSong(emptySong);
-    setBaseConfirmed([]);
     setPendingPlanets([]);
     setRestoredAt(null);
     clearDraft(browserStorage(), userId, NEW_DRAFT);
