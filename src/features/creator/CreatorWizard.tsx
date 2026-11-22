@@ -1,3 +1,4 @@
+'use client';
 
 /**
  * MELODYA WEB — Creador de canciones: la canción como sistema solar.
@@ -120,6 +121,7 @@ export function CreatorWizard() {
   const [pendingOrigin, setPendingOrigin] = useState<string | null>(null);
   const versionBase = source.hydration.song;
   const song = hasSource ? (versionEdits ?? versionBase) : normalSong;
+  // eslint-disable-next-line react-hooks/preserve-manual-memoization -- el compilador infiere `setVersionEdits` (estable); la lista manual es la intencional
   const setSong = useCallback((update: SongState | ((s: SongState) => SongState)) => {
     if (!hasSource) { setNormalSong(update); return; }
     // «Otra versión»: el título de la canción original se conserva (no se edita ni se envía). Un remix tiene título propio y editable.
@@ -587,6 +589,7 @@ export function CreatorWizard() {
       <div className="view-in">
         <GenerationStatusView
           state={live}
+          elements={activePlanets(song).map((id) => ({ id, label: planetDef(id).label, detail: summary[id] }))}
           onRetry={() => setLive({ phase: 'idle' })}
           onRecover={hasSource ? undefined : (generationId) => { setLive({ phase: 'idle' }); startRecovery(generationId); }}
           onRecreateVoice={(sampleId) => { setLive({ phase: 'idle' }); openRecreateVoice(sampleId); }}

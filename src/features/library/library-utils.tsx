@@ -1,3 +1,4 @@
+'use client';
 
 /**
  * MELODYA WEB — Biblioteca: helpers compartidos entre pestañas.
@@ -15,9 +16,8 @@ import {
 } from '@/components/ui/alert-dialog';
 import { Button } from '@/components/ui/button';
 
-/** Menú de tres puntos (variant="list") con las medidas de escritorio también en mobile (la variante lo achica por defecto). */
-export const LIST_MENU_COMFORTABLE_MOBILE =
-  'max-sm:min-w-52 max-sm:[&_[data-slot=dropdown-menu-item]]:h-11 max-sm:[&_[data-slot=dropdown-menu-item]]:gap-2.5 max-sm:[&_[data-slot=dropdown-menu-item]]:px-3.5 max-sm:[&_[data-slot=dropdown-menu-item]]:text-[13px] max-sm:[&_[data-slot=dropdown-menu-item]>svg]:size-[12px]! max-sm:[&_[data-slot=dropdown-menu-item]>svg]:p-[5px]';
+/** Antes devolvía las medidas de escritorio para mobile; ahora la variante «list» ya usa UNA sola medida en todos los anchos, así que no agrega nada (se conserva por compatibilidad). */
+export const LIST_MENU_COMFORTABLE_MOBILE = '';
 
 /* ── Tabs disponibles (orden del navbar; keys = rutas del backend) ── */
 export type LibraryTabKey = 'songs' | 'projects' | 'lyrics' | 'lyric-personas' | 'samples' | 'voices' | 'trash';
@@ -57,16 +57,16 @@ export function ConfirmDialog({
 }) {
   return (
     <AlertDialog open={open} onOpenChange={onOpenChange}>
-      <AlertDialogContent className="max-w-sm border-border/70 bg-surface">
+      <AlertDialogContent>
         <AlertDialogHeader>
           <AlertDialogTitle className="font-display">{title}</AlertDialogTitle>
           <AlertDialogDescription>{description}</AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
-          <AlertDialogCancel disabled={pending}>Cancelar</AlertDialogCancel>
+          <AlertDialogCancel disabled={pending} className="rounded-full">Cancelar</AlertDialogCancel>
           <AlertDialogAction
             onClick={(e) => { e.preventDefault(); onConfirm(); }}
-            className={destructive ? 'bg-destructive text-background hover:bg-destructive/90' : undefined}
+            className="rounded-full"
           >
             {pending && <span className="mr-1 inline-block h-3.5 w-3.5 animate-spin rounded-full border-2 border-white/40 border-t-white" aria-hidden />}
             {actionLabel}
@@ -187,7 +187,7 @@ export function TabCtaButton({
         /* En mobile queda solo el ícono (cuadrado); el texto sigue disponible para lectores de pantalla. */
         iconOnlyOnMobile && 'max-sm:size-11 max-sm:gap-0 max-sm:px-0',
         kind === 'ghost'
-          ? 'rounded-full border-[1.5px] border-line bg-transparent text-[13.5px] font-medium text-foreground transition-colors hover:bg-accent disabled:border-solid'
+          ? 'rounded-full border-[1.5px] border-line bg-transparent text-[13.5px] font-medium text-foreground transition-colors hover:bg-accent'
           : 'rounded-full gradient-warm text-[13.5px] font-bold text-primary-foreground hover:text-primary-foreground'
       )}
     >

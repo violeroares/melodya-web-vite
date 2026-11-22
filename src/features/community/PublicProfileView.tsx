@@ -1,3 +1,4 @@
+'use client';
 
 /**
  * MELODYA WEB — PublicProfileView: perfil público de creador (ruta #/user/:id).
@@ -12,15 +13,18 @@
  *  • POST|DELETE /users/:id/block                  → bloquear / desbloquear (🔒, rompe follows mutuos)
  */
 import { useMemo, useState } from 'react';
+import { ConfirmDialog } from '@/features/library/library-utils';
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
-  ArrowLeft, Ban, Flag, Headphones, Heart, Loader2, MessageCircle, MoreVertical, Music4, Pause, Pencil, Play, Unlock, UserCheck, UserPlus, Users,
+  ArrowLeft, Ban, Flag, Heart, Loader2, MessageCircle, MoreVertical, Music4, Pause, Pencil, Play, Share2, Unlock, UserCheck, UserPlus, Users,
 } from 'lucide-react';
 import { communityApi, profileApi, songsApi } from '@/lib/api';
 import { ApiError, apiFileUrl } from '@/lib/api/client';
 import { navigate } from '@/lib/router';
 import { toUserMessage } from '@/lib/errors';
 import { cn } from '@/lib/utils';
+import { shareContent } from '@/lib/share';
+import { userUrl } from '@/lib/links';
 import { useAuthStore } from '@/stores/auth';
 import { usePlayerStore, type PlayerTrack } from '@/stores/player';
 import { formatNumber } from '@/hooks';
@@ -98,19 +102,19 @@ function BlockConfirmDialog({
 }) {
   return (
     <AlertDialog open={open} onOpenChange={onOpenChange}>
-      <AlertDialogContent className="max-w-sm border-border/70 bg-surface">
+      <AlertDialogContent>
         <AlertDialogHeader>
           <AlertDialogTitle className="font-display">{name}</AlertDialogTitle>
           <AlertDialogDescription>{description}</AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
-          <AlertDialogCancel disabled={pending}>Cancelar</AlertDialogCancel>
+          <AlertDialogCancel disabled={pending} className="rounded-full">Cancelar</AlertDialogCancel>
           <AlertDialogAction
             onClick={(e) => {
               e.preventDefault(); // mantener el dialog abierto mientras viaja el request
               onConfirm();
             }}
-            className="bg-destructive text-background hover:bg-destructive/90"
+            className="bg-primary text-primary-foreground hover:bg-primary/90"
           >
             {pending && <Loader2 className="h-4 w-4 animate-spin" aria-hidden />}
             {actionLabel}
@@ -217,11 +221,24 @@ function ProfileHeader({
   const { toast } = useToast();
   const guard = useGuestGuard();
   const [blockOpen, setBlockOpen] = useState(false);
+  const [confirmUnfollow, setConfirmUnfollow] = useState(false);
   /* v0.18.0 — denuncia del creador (POST /reports, targetType USER). */
   const [reportTarget, setReportTarget] = useState<ReportTarget | null>(null);
   const onReportProfile = () => {
     if (!guard('Ingresá para denunciar contenido', 'Creá tu cuenta para ayudarnos a cuidar la comunidad.')) return;
     setReportTarget({ type: 'USER', id: profile.id, title: `a ${profile.name}` });
+  };
+
+  /* Compartir el perfil: diálogo nativo si existe; si no, copia el link al portapapeles. */
+  const onShareProfile = async () => {
+    const url = userUrl(profile.id);
+    const outcome = await shareContent({ title: profile.name, text: `Mirá el perfil de ${profile.name} en Melodya`, url });
+    if (outcome === 'shared') return;
+    if (outcome === 'copied') {
+      toast({ title: 'Link copiado 🔗', description: 'Pegalo donde quieras compartir este perfil.' });
+    } else {
+      toast({ title: 'No pudimos compartir el perfil', variant: 'destructive' });
+    }
   };
 
   const following = Boolean(profile.viewerIsFollowing);
@@ -292,7 +309,9 @@ function ProfileHeader({
 
   const onFollowClick = () => {
     if (!guard('Ingresá para seguir creadores', 'Creá tu cuenta gratis y seguí a quien te gusta.')) return;
-    followMutation.mutate({ follow: !following });
+    // Dejar de seguir pide confirmación; seguir es directo.
+    if (following) setConfirmUnfollow(true);
+    else followMutation.mutate({ follow: true });
   };
 
   /* Reproducir todo el catálogo público del creador (misma query que la grilla: se comparte la caché). */
@@ -321,9 +340,9 @@ function ProfileHeader({
     'rounded-full border border-white/15 bg-black/45 text-white backdrop-blur-sm hover:bg-black/65 hover:text-white';
 
   return (
-    <header className="overflow-hidden rounded-2xl border border-border/70 bg-surface">
+    <header className="relative rounded-[28px_28px_14px_14px] border-[1.5px] border-[var(--m-border)] bg-[var(--m-input)]">
       {/* portada del creador con identidad y acciones superpuestas */}
-      <div className="relative aspect-video max-h-80 min-h-64 w-full">
+      <div className="relative aspect-video max-h-80 min-h-64 w-full overflow-hidden lg:max-h-[22rem] lg:min-h-[22rem] rounded-[26.5px_26.5px_12.5px_12.5px]">
         <AuthImage src={profile.coverImageUrl} alt={`Portada de ${profile.name}`} className="absolute inset-0 h-full w-full">
           <div className="absolute inset-0 bg-voice">
             <div className="absolute -left-6 -top-10 h-32 w-32 rounded-full bg-amber/20 blur-2xl" aria-hidden />
@@ -333,157 +352,162 @@ function ProfileHeader({
         </AuthImage>
         <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/85 via-black/30 to-transparent" aria-hidden />
 
-        <div className="absolute inset-x-0 bottom-0 flex flex-col gap-4 p-4 sm:p-6 lg:flex-row lg:items-end lg:justify-between">
+        {/* acciones: arriba a la derecha de la portada */}
+        <div className="absolute top-3 right-3 z-10 flex items-center gap-2 sm:top-4 sm:right-4">
+          {isOwn ? (
+            <Button variant="ghost" className={cn('h-11 px-5', overlayBtn)} onClick={() => navigate('/profile')}>
+              <Pencil className="h-4 w-4" aria-hidden />
+              Editar mi perfil
+            </Button>
+          ) : (
+            <>
+              <Button
+                variant="ghost"
+                disabled={followMutation.isPending}
+                onClick={onFollowClick}
+                aria-pressed={following}
+                className={cn(
+                  'h-11 px-5',
+                  following
+                    ? overlayBtn
+                    : 'rounded-full gradient-warm text-primary-foreground hover:text-primary-foreground',
+                  blocked && followMutation.isPending && 'opacity-50'
+                )}
+              >
+                {followMutation.isPending ? (
+                  <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+                ) : following ? (
+                  <UserCheck className="h-4 w-4" aria-hidden />
+                ) : (
+                  <UserPlus className="h-4 w-4" aria-hidden />
+                )}
+                {following ? 'Siguiendo' : 'Seguir'}
+              </Button>
+
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    aria-label={`Más opciones para ${profile.name}`}
+                    className={cn('h-11 w-11', overlayBtn)}
+                  >
+                    <MoreVertical className="h-4 w-4" aria-hidden />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" variant="list">
+                  <DropdownMenuItem onClick={() => void onShareProfile()} className="cursor-pointer gap-2 rounded-lg">
+                    <Share2 className="h-4 w-4" aria-hidden />
+                    Compartir perfil
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  {blocked ? (
+                    <DropdownMenuItem
+                      onClick={() => setBlockOpen(true)}
+                      className="cursor-pointer gap-2 rounded-lg"
+                    >
+                      <Unlock className="h-4 w-4 text-amber-strong" aria-hidden />
+                      Desbloquear
+                    </DropdownMenuItem>
+                  ) : (
+                    <DropdownMenuItem
+                      onClick={() => setBlockOpen(true)}
+                      className="cursor-pointer gap-2 rounded-lg text-destructive focus:text-destructive"
+                    >
+                      <Ban className="h-4 w-4" aria-hidden />
+                      Bloquear
+                    </DropdownMenuItem>
+                  )}
+                  {/* v0.18.0 — denuncia del creador (convive con el bloqueo) */}
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem
+                    onClick={onReportProfile}
+                    className="cursor-pointer gap-2 rounded-lg text-destructive focus:text-destructive"
+                  >
+                    <Flag className="h-4 w-4" aria-hidden />
+                    Denunciar a {profile.name}
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </>
+          )}
+        </div>
+
+        <div className="@container absolute inset-x-0 bottom-0 flex flex-col">
+        <div className="flex flex-col gap-4 p-4 sm:p-6 lg:flex-row lg:items-end lg:justify-between">
           <div className="flex min-w-0 items-center gap-4">
-            <span className="block shrink-0 rounded-full ring-2 ring-white/20" aria-hidden>
+            {/* Mismo avatar que en «Mi perfil»: aro del color de fondo y aro dorado por fuera */}
+            <span className="block shrink-0 rounded-full" aria-hidden>
               <AuthAvatar
                 src={profile.avatarUrl}
                 name={profile.name}
-                className="h-20 w-20 border-0 sm:h-24 sm:w-24"
-                fallbackClassName="font-display text-3xl font-extrabold"
+                className="size-20 border-0 shadow-[0_0_0_4px_var(--background),0_0_0_6.5px_var(--m-gold)] sm:size-24"
+                fallbackClassName="bg-surface text-[22px] text-foreground sm:text-[26px] dark:text-foreground"
               />
             </span>
             <div className="min-w-0">
               <h1 className="truncate font-display text-2xl font-extrabold tracking-tight text-white drop-shadow sm:text-4xl">
                 {profile.name}
               </h1>
-              <p
-                className="mt-1 inline-flex items-center gap-1.5 text-sm text-white/80"
-                title="Reproducciones totales de sus canciones públicas"
-              >
-                <Headphones className="h-4 w-4" aria-hidden />
-                <span className="font-semibold tabular-nums">{formatNumber(profile.totalPlays)}</span>
-                reproducciones
-              </p>
             </div>
           </div>
 
-          {/* acciones */}
-          <div className="flex shrink-0 items-center gap-2">
-            {isOwn ? (
-              <Button variant="ghost" className={cn('h-11 px-5', overlayBtn)} onClick={() => navigate('/profile')}>
-                <Pencil className="h-4 w-4" aria-hidden />
-                Editar mi perfil
-              </Button>
-            ) : (
-              <>
-                <Button
-                  variant="ghost"
-                  disabled={followMutation.isPending}
-                  onClick={onFollowClick}
-                  aria-pressed={following}
-                  className={cn(
-                    'h-11 px-5',
-                    following
-                      ? overlayBtn
-                      : 'rounded-full gradient-warm text-primary-foreground hover:text-primary-foreground',
-                    blocked && followMutation.isPending && 'opacity-50'
-                  )}
-                >
-                  {followMutation.isPending ? (
-                    <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
-                  ) : following ? (
-                    <UserCheck className="h-4 w-4" aria-hidden />
-                  ) : (
-                    <UserPlus className="h-4 w-4" aria-hidden />
-                  )}
-                  {following ? 'Siguiendo' : 'Seguir'}
-                </Button>
-
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      aria-label={`Más opciones para ${profile.name}`}
-                      className={cn('h-11 w-11', overlayBtn)}
-                    >
-                      <MoreVertical className="h-4 w-4" aria-hidden />
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end" variant="list">
-                    {blocked ? (
-                      <DropdownMenuItem
-                        onClick={() => setBlockOpen(true)}
-                        className="cursor-pointer gap-2 rounded-lg"
-                      >
-                        <Unlock className="h-4 w-4 text-amber-strong" aria-hidden />
-                        Desbloquear
-                      </DropdownMenuItem>
-                    ) : (
-                      <DropdownMenuItem
-                        onClick={() => setBlockOpen(true)}
-                        className="cursor-pointer gap-2 rounded-lg text-destructive focus:text-destructive"
-                      >
-                        <Ban className="h-4 w-4" aria-hidden />
-                        Bloquear
-                      </DropdownMenuItem>
-                    )}
-                    {/* v0.18.0 — denuncia del creador (convive con el bloqueo) */}
-                    <DropdownMenuSeparator />
-                    <DropdownMenuItem
-                      onClick={onReportProfile}
-                      className="cursor-pointer gap-2 rounded-lg text-destructive focus:text-destructive"
-                    >
-                      <Flag className="h-4 w-4" aria-hidden />
-                      Denunciar a {profile.name}
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
-              </>
-            )}
+        </div>
+          {/* stats clicables, sobre la portada (abajo, igual que en el detalle de una canción): mismo estilo que los números del detalle de una canción (franja navy translúcida, crema, 14 px semibold, íconos de 17 px) */}
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 bg-surface/80 py-3 pr-24 pl-4 text-[14px] font-semibold text-foreground/85 sm:pr-24 sm:pl-6 dark:bg-[rgba(19,28,51,.72)] dark:text-[rgba(243,229,226,.85)]">
+            <span className="inline-flex items-center gap-1.5" title="Reproducciones totales de sus canciones públicas">
+              <Play className="h-[17px] w-[17px]" aria-hidden />
+              <span className="tabular-nums">{formatNumber(profile.totalPlays)}</span>
+              <span className="@max-[48rem]:sr-only">reproducciones</span>
+            </span>
             <button
               type="button"
-              onClick={onPlayAll}
-              disabled={queue.length === 0 && !playingCreator}
-              aria-label={playingCreator ? `Pausar a ${profile.name}` : `Reproducir canciones de ${profile.name}`}
-              className="flex h-12 w-12 shrink-0 cursor-pointer items-center justify-center rounded-full bg-white text-black transition-transform hover:scale-105 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white disabled:cursor-not-allowed disabled:opacity-50"
+              onClick={() => document.getElementById('creator-songs')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
+              aria-label={`Ver las ${profile.songsCount} canciones de ${profile.name}`}
+              className="inline-flex items-center gap-1.5 rounded-full transition-colors hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground dark:hover:text-[#F3E5E2] dark:focus-visible:outline-[#F3E5E2]"
             >
-              {playingCreator ? (
-                <Pause className="h-5 w-5 fill-current" aria-hidden />
-              ) : (
-                <Play className="h-5 w-5 translate-x-px fill-current" aria-hidden />
-              )}
+              <Music4 className="h-[17px] w-[17px]" aria-hidden />
+              <span className="tabular-nums">{formatNumber(profile.songsCount)}</span> <span className="@max-[48rem]:sr-only">canciones</span>
             </button>
+            <button
+              type="button"
+              onClick={() => onOpenList('followers')}
+              aria-label={`Ver los seguidores de ${profile.name}`}
+              className="inline-flex items-center gap-1.5 rounded-full transition-colors hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground dark:hover:text-[#F3E5E2] dark:focus-visible:outline-[#F3E5E2]"
+            >
+              <Users className="h-[17px] w-[17px]" aria-hidden />
+              <span className="tabular-nums">{formatNumber(profile.followersCount)}</span> <span className="@max-[48rem]:sr-only">seguidores</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => onOpenList('following')}
+              aria-label={`Ver a quién sigue ${profile.name}`}
+              className="inline-flex items-center gap-1.5 rounded-full transition-colors hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground dark:hover:text-[#F3E5E2] dark:focus-visible:outline-[#F3E5E2]"
+            >
+              <UserCheck className="h-[17px] w-[17px]" aria-hidden />
+              <span className="tabular-nums">{formatNumber(profile.followingCount)}</span> <span className="@max-[48rem]:sr-only">seguidos</span>
+            </button>
+            <span className="inline-flex items-center gap-1.5" title="Me gusta totales de sus canciones públicas">
+              <Heart className="h-[17px] w-[17px]" aria-hidden />
+              <span className="tabular-nums">{formatNumber(profile.totalLikes)}</span>
+              <span className="@max-[48rem]:sr-only">me gusta</span>
+            </span>
           </div>
         </div>
       </div>
 
-      {/* stats clicables, debajo de la portada */}
-      <div className="flex flex-wrap items-center gap-x-5 gap-y-2 px-4 py-3 text-sm sm:px-6">
-        <button
-          type="button"
-          onClick={() => document.getElementById('creator-songs')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
-          aria-label={`Ver las ${profile.songsCount} canciones de ${profile.name}`}
-          className="inline-flex items-center gap-1.5 rounded-full px-1 py-0.5 font-medium text-foreground transition-colors hover:text-amber-strong focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-        >
-          <Music4 className="h-4 w-4 text-amber-strong" aria-hidden />
-          <span className="font-bold tabular-nums">{formatNumber(profile.songsCount)}</span> canciones
-        </button>
-        <button
-          type="button"
-          onClick={() => onOpenList('followers')}
-          aria-label={`Ver los seguidores de ${profile.name}`}
-          className="inline-flex items-center gap-1.5 rounded-full px-1 py-0.5 font-medium text-foreground transition-colors hover:text-amber-strong focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-        >
-          <Users className="h-4 w-4 text-amber-strong" aria-hidden />
-          <span className="font-bold tabular-nums">{formatNumber(profile.followersCount)}</span> seguidores
-        </button>
-        <button
-          type="button"
-          onClick={() => onOpenList('following')}
-          aria-label={`Ver a quién sigue ${profile.name}`}
-          className="inline-flex items-center gap-1.5 rounded-full px-1 py-0.5 font-medium text-foreground transition-colors hover:text-amber-strong focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-        >
-          <UserCheck className="h-4 w-4 text-amber-strong" aria-hidden />
-          <span className="font-bold tabular-nums">{formatNumber(profile.followingCount)}</span> seguidos
-        </button>
-        <span className="inline-flex items-center gap-1.5 text-muted-foreground" title="Me gusta totales de sus canciones públicas">
-          <Heart className="h-4 w-4" aria-hidden />
-          <span className="font-semibold tabular-nums text-foreground/80">{formatNumber(profile.totalLikes)}</span>
-          me gusta
-        </span>
-      </div>
+      <ConfirmDialog
+        open={confirmUnfollow}
+        onOpenChange={setConfirmUnfollow}
+        title={`¿Dejar de seguir a ${profile.name}?`}
+        description="Su contenido deja de aparecer en tu feed de seguidos. Podés volver a seguirlo cuando quieras."
+        actionLabel="Dejar de seguir"
+        pending={followMutation.isPending}
+        onConfirm={() => {
+          setConfirmUnfollow(false);
+          followMutation.mutate({ follow: false });
+        }}
+      />
 
       {/* confirmación de bloqueo / desbloqueo */}
       <BlockConfirmDialog
@@ -505,6 +529,21 @@ function ProfileHeader({
         }}
         pending={blockMutation.isPending}
       />
+
+      {/* Reproducir como en «Más escuchada» de Comunidad: círculo de 60 px que cuelga del borde inferior de la portada, con aro del color del fondo */}
+      <button
+        type="button"
+        onClick={onPlayAll}
+        disabled={queue.length === 0 && !playingCreator}
+        aria-label={playingCreator ? `Pausar a ${profile.name}` : `Reproducir canciones de ${profile.name}`}
+        className="absolute right-4 -bottom-3.5 z-10 flex size-[60px] cursor-pointer items-center justify-center rounded-full bg-primary text-primary-foreground shadow-[0_0_0_5px_var(--background)] transition-transform active:scale-95 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-foreground disabled:cursor-not-allowed disabled:opacity-50"
+      >
+        {playingCreator ? (
+          <Pause className="h-[18px] w-[18px] fill-current" aria-hidden />
+        ) : (
+          <Play className="h-[18px] w-[18px] translate-x-px fill-current" aria-hidden />
+        )}
+      </button>
 
       {/* v0.18.0 — dialog de denuncia del creador */}
       <ReportDialog
@@ -589,50 +628,54 @@ function CreatorSongs({ userId, songsCount }: { userId: string; songsCount: numb
             const playable = Boolean(apiFileUrl(song.audioUrl));
             const playing = isCurrentPlaying(song);
             return (
-              <article key={song.id} role="listitem" className="group">
+              <article key={song.id} role="listitem" className="lift group flex flex-col gap-2">
                 <div className="relative">
                   <button
                     type="button"
                     onClick={() => navigate(`/songs/${song.id}`)}
                     aria-label={`Ver ${song.title}, de ${song.author.name}`}
-                    className="block w-full rounded-cover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    className="block w-full cursor-pointer rounded-[28px_28px_14px_14px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                   >
                     <CoverArt
                       id={song.id}
                       src={song.coverUrl}
                       alt={`Portada de ${song.title}`}
                       className="aspect-square w-full transition-transform duration-300"
-                      rounded="rounded-cover"
-                      showVinyl
+                      rounded="rounded-[28px_28px_14px_14px]"
                     />
                   </button>
                   {playable && (
+                    /* Insignia ▶ como en las canciones de la Biblioteca: círculo de 32 px con borde blanco en la esquina inferior derecha (zona táctil de 52 px) */
                     <button
                       type="button"
                       aria-label={playing ? `Pausar ${song.title}` : `Escuchá ${song.title}`}
                       onClick={() => onPlaySong(song)}
-                      className="absolute bottom-2 right-2 z-[2] flex size-11 items-center justify-center rounded-full gradient-warm text-primary-foreground shadow-md transition-transform duration-200 hover:scale-105 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                      className="group/pb absolute right-0 bottom-0 z-[2] flex size-[52px] items-center justify-center focus-visible:outline-none"
                     >
-                      {playing ? (
-                        <Pause className="h-5 w-5 fill-current" aria-hidden />
-                      ) : (
-                        <Play className="h-5 w-5 translate-x-px fill-current" aria-hidden />
-                      )}
+                      <span
+                        aria-hidden
+                        className={cn(
+                          'flex size-8 items-center justify-center rounded-full border-[1.5px] border-white transition-transform group-active/pb:scale-95 group-focus-visible/pb:ring-2 group-focus-visible/pb:ring-foreground group-focus-visible/pb:ring-offset-2',
+                          playing ? 'bg-primary text-primary-foreground' : 'bg-black/55 text-white'
+                        )}
+                      >
+                        {playing ? <Pause className="h-3.5 w-3.5 fill-current" /> : <Play className="h-3.5 w-3.5 translate-x-px fill-current" />}
+                      </span>
                     </button>
                   )}
                 </div>
 
-                <div className="mt-2 min-w-0 space-y-1">
+                <div className="flex min-w-0 flex-col gap-0.5 pt-0.5">
                   <button
                     type="button"
                     onClick={() => navigate(`/songs/${song.id}`)}
-                    className="block w-full truncate rounded text-left text-sm font-semibold text-foreground transition-colors hover:text-amber-strong focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    className="block w-full min-w-0 cursor-pointer truncate rounded text-left text-[15px] leading-tight font-semibold text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
                   >
                     {song.title}
                   </button>
-                  <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1 text-xs text-muted-foreground">
+                  <div className="flex flex-wrap items-center gap-x-2.5 gap-y-0.5 pt-0.5 text-xs tabular-nums text-muted-foreground">
                     <span className="inline-flex items-center gap-1" title="Reproducciones">
-                      <Play className="h-3 w-3" aria-hidden />
+                      <Play className="h-3.5 w-3.5" aria-hidden />
                       <span className="tabular-nums">{formatNumber(song.playsCount)}</span>
                     </span>
                     <button
@@ -643,12 +686,12 @@ function CreatorSongs({ userId, songsCount }: { userId: string; songsCount: numb
                       title="Me gusta"
                       className={cn(
                         'inline-flex items-center gap-1 rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
-                        song.viewerReaction === 'LIKE' ? 'text-amber-strong' : 'hover:text-foreground'
+                        song.viewerReaction === 'LIKE' ? 'text-label' : 'hover:text-foreground'
                       )}
                     >
                       <Heart
                         key={song.viewerReaction === 'LIKE' ? 'on' : 'off'}
-                        className={cn('h-3 w-3', song.viewerReaction === 'LIKE' && 'fill-current heart-pop')}
+                        className={cn('h-3.5 w-3.5', song.viewerReaction === 'LIKE' && 'fill-current heart-pop')}
                         aria-hidden
                       />
                       <span className="tabular-nums">{formatNumber(song.likesCount)}</span>
@@ -660,7 +703,7 @@ function CreatorSongs({ userId, songsCount }: { userId: string; songsCount: numb
                       title="Comentarios"
                       className="inline-flex items-center gap-1 rounded-full transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                     >
-                      <MessageCircle className="h-3 w-3" aria-hidden />
+                      <MessageCircle className="h-3.5 w-3.5" aria-hidden />
                       <span className="tabular-nums">{formatNumber(song.commentsCount)}</span>
                     </button>
                   </div>
@@ -801,6 +844,7 @@ function UserListRow({
   const { toast } = useToast();
   const guard = useGuestGuard();
   const following = Boolean(row.viewerIsFollowing);
+  const [confirmUnfollow, setConfirmUnfollow] = useState(false);
 
   /* Optimista sobre la lista visible; el invalidate global resincroniza el resto
    * (perfil del row, mis seguidos, feed de seguidos, etc.). */
@@ -856,7 +900,9 @@ function UserListRow({
           aria-label={following ? `Dejar de seguir a ${row.name}` : `Seguir a ${row.name}`}
           onClick={() => {
             if (!guard('Ingresá para seguir creadores', 'Creá tu cuenta gratis y seguí a quien te gusta.')) return;
-            followMutation.mutate({ follow: !following });
+            // Dejar de seguir pide confirmación; seguir es directo.
+            if (following) setConfirmUnfollow(true);
+            else followMutation.mutate({ follow: true });
           }}
           className={cn(
             'shrink-0 rounded-full',
@@ -873,6 +919,18 @@ function UserListRow({
           {following ? 'Siguiendo' : 'Seguir'}
         </Button>
       )}
+      <ConfirmDialog
+        open={confirmUnfollow}
+        onOpenChange={setConfirmUnfollow}
+        title={`¿Dejar de seguir a ${row.name}?`}
+        description="Su contenido deja de aparecer en tu feed de seguidos. Podés volver a seguirlo cuando quieras."
+        actionLabel="Dejar de seguir"
+        pending={followMutation.isPending}
+        onConfirm={() => {
+          setConfirmUnfollow(false);
+          followMutation.mutate({ follow: false });
+        }}
+      />
     </li>
   );
 }

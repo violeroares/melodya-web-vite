@@ -1,3 +1,4 @@
+'use client';
 
 /**
  * MELODYA WEB — Planes y fichas (ruta #/plans, pública).
@@ -21,7 +22,8 @@
  */
 import React, { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowRight, BadgeCheck, Check, Info, Loader2, Sparkles, X, Zap } from 'lucide-react';
+import { ArrowRight, BadgeCheck, Check, Info, Loader2, Sparkles, X } from 'lucide-react';
+import { CoinIcon } from '@/components/common/CoinIcon';
 import { billingApi } from '@/lib/api';
 import { navigate } from '@/lib/router';
 import { toUserMessage } from '@/lib/errors';
@@ -252,7 +254,7 @@ export function PricingView() {
           <ErrorState message="No pudimos cargar los paquetes de fichas." onRetry={() => void packsQuery.refetch()} />
         ) : packs.length === 0 ? (
           <EmptyState
-            icon={<Zap className="h-6 w-6" />}
+            icon={<CoinIcon className="h-6 w-6" />}
             title="No hay paquetes disponibles"
             description="Volvé a intentar en unos minutos: estamos afinando los precios."
           />
@@ -517,7 +519,7 @@ export function PackCard({ pack, popular, busy, onBuy }: { pack: CreditPackage; 
             busy={busy}
             ariaLabel={`Comprar ${fmtInt(pack.credits)} fichas por ${formatPriceCents(view.finalCents, pack.currency)}`}
           >
-            <Zap className="h-4 w-4 shrink-0" aria-hidden />
+            <CoinIcon className="h-4 w-4 shrink-0" aria-hidden />
             <span>Comprar {fmtInt(pack.credits)} fichas</span>
           </PricingCta>
         </div>

@@ -1,3 +1,4 @@
+'use client';
 
 /**
  * MELODYA WEB — Sidebar desktop: colapsable, persistente, con CTA "Crear
@@ -6,8 +7,9 @@
 import React from 'react';
 import {
   Home, Users, ListMusic, Music4, FileText, PenLine, Mic2, AudioLines,
-  Zap, ChevronLeft, ChevronRight, Plus, Trash2,
+  ChevronLeft, ChevronRight, Plus, Trash2,
 } from 'lucide-react';
+import { CoinIcon } from '@/components/common/CoinIcon';
 import { Link, useRoute, navigate } from '@/lib/router';
 import { cn } from '@/lib/utils';
 import { useAuthStore } from '@/stores/auth';
@@ -52,7 +54,7 @@ function SideItem({ item, collapsed, path }: { item: NavItem; collapsed: boolean
       to={item.to}
       aria-current={active ? 'page' : undefined}
       className={cn(
-        'group relative flex min-h-11 items-center gap-3 rounded-full px-4 py-2.5 text-sm font-medium transition-colors',
+        'group relative flex min-h-12 items-center gap-3 rounded-full px-4 py-2 text-[14.5px] font-medium transition-colors',
         // design-V2: todos los ítems tienen la misma forma (cápsula que sale del borde izquierdo de la barra; el nav tiene px-3, se compensa).
         // Solo cambia el color: terracota al seleccionar, terracota suave al pasar el mouse.
         '-ml-3 w-[calc(100%+0.75rem)] justify-start rounded-l-none pr-4 pl-[22px]',
@@ -63,7 +65,10 @@ function SideItem({ item, collapsed, path }: { item: NavItem; collapsed: boolean
     >
       <span
         aria-hidden
-        className={cn('flex size-8 shrink-0 items-center justify-center rounded-full', active && 'bg-primary text-primary-foreground')}
+        className={cn(
+          'flex size-8 shrink-0 items-center justify-center rounded-full',
+          active && 'bg-primary text-primary-foreground'
+        )}
       >
         <Icon className="h-[18px] w-[18px]" />
       </span>
@@ -173,7 +178,7 @@ export function Sidebar({ collapsed, onToggle }: { collapsed: boolean; onToggle:
             </Button>
           )}
 
-          <nav className="space-y-1">
+          <nav className="space-y-1.5">
             {MAIN.map((item) => (
               <SideItem key={item.to} item={item} collapsed={collapsed} path={path} />
             ))}
@@ -183,14 +188,14 @@ export function Sidebar({ collapsed, onToggle }: { collapsed: boolean; onToggle:
               esta sección — antes de loguearse no existe para ellos). */}
           {authed && (
             <>
-              <div aria-hidden className="h-4" />
+              <div aria-hidden className="h-5" />
               {!collapsed && (
-                <p className="mb-2 flex items-center gap-1.5 px-3 text-xs font-bold uppercase tracking-[0.12em] text-label">
-                  <span aria-hidden className="h-1.5 w-1.5 rounded-full bg-gold" />
+                <p className="mb-2.5 flex items-center gap-2.5 px-3 text-xs font-bold uppercase tracking-[0.12em] text-label">
+                  <span aria-hidden className="size-[5px] shrink-0 rounded-full bg-[var(--m-accent)]" />
                   Biblioteca
                 </p>
               )}
-              <nav className="space-y-1">
+              <nav className="space-y-1.5">
                 {LIBRARY.map((item) => (
                   <SideItem key={item.to} item={item} collapsed={collapsed} path={path} />
                 ))}
@@ -206,8 +211,8 @@ export function Sidebar({ collapsed, onToggle }: { collapsed: boolean; onToggle:
           playerActive && 'pb-[max(5.5rem,calc(env(safe-area-inset-bottom)+5.5rem))]'
         )}>
           {/* Pegado a la tarjeta del usuario */}
-          <nav className="mb-1 space-y-1">
-            <SideItem item={{ to: '/plans', label: 'Planes y fichas', icon: Zap }} collapsed={collapsed} path={path} />
+          <nav className="mb-1.5 space-y-1.5">
+            <SideItem item={{ to: '/plans', label: 'Planes y fichas', icon: CoinIcon }} collapsed={collapsed} path={path} />
             {/* v0.25.0: la administración vive en melodya_backoffice — la web
                 es exclusiva para creadores. */}
           </nav>

@@ -1,3 +1,4 @@
+'use client';
 
 /**
  * MELODYA WEB — Biblioteca › Proyectos.
@@ -531,7 +532,7 @@ function ProjectFormDialog({
 
           {/* Mismos botones que el modal de agregar canciones: una fila, centrados, contorno fino */}
           <DialogFooter className="flex-row justify-center gap-2 sm:justify-center">
-            <Button type="button" variant="outline" className="rounded-full border-[1.5px] border-line bg-transparent text-[13.5px] font-medium text-foreground transition-colors hover:bg-accent disabled:border-solid max-sm:flex-1 max-sm:px-3 max-sm:text-[13px]" onClick={() => onOpenChange(false)}>
+            <Button type="button" variant="outline" className="rounded-full border-[1.5px] border-line bg-transparent text-[13.5px] font-medium text-foreground transition-colors hover:bg-accent max-sm:flex-1 max-sm:px-3 max-sm:text-[13px]" onClick={() => onOpenChange(false)}>
               Cancelar
             </Button>
             <Button
@@ -675,7 +676,7 @@ function SongPickerDialog({ project, open, onOpenChange }: { project: Project; o
             <Button
               type="button"
               variant="outline"
-              className="rounded-full border-[1.5px] border-line bg-transparent text-[13.5px] font-medium text-foreground transition-colors hover:bg-accent disabled:border-solid max-sm:flex-1 max-sm:px-3 max-sm:text-[13px]"
+              className="rounded-full border-[1.5px] border-line bg-transparent text-[13.5px] font-medium text-foreground transition-colors hover:bg-accent max-sm:flex-1 max-sm:px-3 max-sm:text-[13px]"
               onClick={() => onOpenChange(false)}
             >
               Cancelar

@@ -1,3 +1,4 @@
+'use client';
 
 /**
  * MELODYA WEB — Biblioteca (6 pestañas): canciones, proyectos, letras,
@@ -20,7 +21,7 @@ export function LibraryView() {
   return (
     <div className="view-in">
       <header className="mb-5">
-        <h1 className="font-display text-2xl font-extrabold tracking-tight text-foreground sm:text-3xl">Tu biblioteca</h1>
+        <h1 className="font-display text-3xl font-extrabold tracking-tight text-foreground">Tu biblioteca</h1>
         <p className="mt-1 text-sm text-muted-foreground">
           Todo lo que venís creando: canciones, proyectos, letras, letristas y tus sonidos.
         </p>

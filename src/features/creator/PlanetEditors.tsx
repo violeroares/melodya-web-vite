@@ -1,3 +1,4 @@
+'use client';
 
 /**
  * Editores de cada planeta de la canción. Cada editor trabaja sobre su parte del SongState (song-model) y muestra,
@@ -5,6 +6,7 @@
  */
 
 import React, { useRef, useState } from 'react';
+import { ConfirmDialog } from '@/features/library/library-utils';
 import { Wand2, Loader2, Mic2, Sparkles, ChevronRight, Info, CircleAlert, Plus, X, Maximize2, Trash2, Upload, Check, Minus, AudioLines, TrendingUp, Flame, Guitar, Zap, Mountain, Disc3, Heart, Mic, Music4, Drama, Lightbulb, PenLine, Music2, BookOpen, type LucideIcon } from 'lucide-react';
 import { Link } from '@/lib/router';
 import { assistantApi } from '@/lib/api';
@@ -202,10 +204,11 @@ export function LyricsCanvas({ id, value, onChange, fill, children, placeholder,
 /* Letra con botón para ampliarla: un modal con la letra completa y una cruz para cerrarlo. Se usa en «Tu letra» y en «Importar letra». */
 export function ExpandableLyrics({ id, value, onChange, description, placeholder, disabled, heightClass, grow, textareaRef, ariaLabel, plain, maxLength, modalTitle }: { plain?: boolean; maxLength?: number; modalTitle?: string; id: string; value: string; onChange: (v: string) => void; description?: string; placeholder?: string; disabled?: boolean; heightClass?: string; grow?: boolean; textareaRef?: React.Ref<HTMLTextAreaElement>; ariaLabel?: string }) {
   const [open, setOpen] = useState(false);
+  const [confirmClear, setConfirmClear] = useState(false);
   const clearButton = value.length > 0 && !disabled && (
     <button
       type="button"
-      onClick={() => onChange('')}
+      onClick={() => setConfirmClear(true)}
       aria-label={plain ? 'Borrar el texto' : 'Borrar la letra'}
       title={plain ? 'Borrar el texto' : 'Borrar la letra'}
       className="absolute top-2 right-10 z-10 flex size-8 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-foreground/10 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-foreground"
@@ -238,6 +241,17 @@ export function ExpandableLyrics({ id, value, onChange, description, placeholder
           </LyricsCanvas>
         </DialogContent>
       </Dialog>
+      <ConfirmDialog
+        open={confirmClear}
+        onOpenChange={setConfirmClear}
+        title="¿Borrar el texto?"
+        description={plain ? 'Se borra todo el texto de esta caja. No se puede deshacer.' : 'Se borra toda la letra de esta caja. No se puede deshacer.'}
+        actionLabel="Borrar"
+        onConfirm={() => {
+          setConfirmClear(false);
+          onChange('');
+        }}
+      />
     </>
   );
 }
@@ -455,7 +469,7 @@ export function StyleEditor({ song, patch, issues }: { song: SongState; patch: P
               aria-describedby="custom-genre-feedback"
               className="rounded-xl"
             />
-            <Button type="button" variant="outline" onClick={addDraft} className="shrink-0 h-14 rounded-full border-[1.5px] border-primary bg-primary px-[18px] text-sm font-bold text-[#131C33] hover:border-primary hover:bg-primary hover:text-[#131C33] hover:brightness-95" aria-label="Agregar género">
+            <Button type="button" variant="outline" onClick={addDraft} disabled={!draft.trim()} className="shrink-0 h-14 rounded-full border-[1.5px] border-primary bg-primary px-[18px] text-sm font-bold text-[#131C33] hover:border-primary hover:bg-primary hover:text-[#131C33] hover:brightness-95" aria-label="Agregar género">
               <Plus className="h-4 w-4" aria-hidden /> <span className="hidden sm:inline">Agregar</span>
             </Button>
           </div>

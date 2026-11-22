@@ -537,7 +537,6 @@ export function describeTreatment(s: SongState): Array<{ kind: 'applied' | 'note
       text: s.remix?.mode === 'COVER' ? 'El audio de la canción original se transforma conservando su melodía.' : route.endpoint === 'cover' ? 'Tu audio se transforma conservando su melodía.' : 'Tu audio se usa solo como guía.',
     });
   }
-  if (creativitySet(s)) out.push({ kind: 'note', text: 'Los controles de creatividad se envían tal cual; su efecto sonoro depende de Melodya.' });
   return out;
 }
 

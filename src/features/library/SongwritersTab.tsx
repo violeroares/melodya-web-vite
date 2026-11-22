@@ -1,3 +1,4 @@
+'use client';
 
 /**
  * MELODYA WEB — Biblioteca › Letristas (LyricPersonas).
@@ -187,7 +188,7 @@ export function SongwritersTab() {
                 type="button"
                 onClick={() => void playCollection(persona)}
                 disabled={playingPersona !== null}
-                className={cn("persona-play flex shrink-0 cursor-pointer items-center justify-center rounded-full border-[1.5px] border-foreground text-foreground transition-colors hover:bg-foreground/10 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground disabled:opacity-60", list ? "size-9" : "size-8")}
+                className={cn("persona-play flex shrink-0 cursor-pointer items-center justify-center rounded-full border-[1.5px] border-foreground text-foreground transition-colors hover:bg-foreground/10 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground disabled:opacity-60 disabled:border-transparent", list ? "size-9" : "size-8")}
                 aria-label={`Reproducir la colección ${persona.name} (${nSongs} ${nSongs === 1 ? 'canción' : 'canciones'})`}
                 title="Reproducir las canciones de esta colección: Colección"
               >

@@ -1,3 +1,4 @@
+'use client';
 
 /**
  * MELODYA WEB — LyricsStudio: asistente de letras a pantalla completa.
@@ -51,6 +52,7 @@ import {
   Mountain,
   PartyPopper,
   Lightbulb,
+  Clock,
   type LucideIcon,
 } from 'lucide-react';
 
@@ -80,6 +82,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { CanvasTextarea } from '@/components/common/CanvasTextarea';
+import { SegmentedTabs } from '@/components/common/SegmentedTabs';
 import { useDebounce } from '@/hooks';
 import {
   Dialog,
@@ -994,14 +997,14 @@ export function LyricsStudio({
                 {/* Como las opciones del bottom sheet «Traer una letra» de design-V2 (borde de 1,5 px, círculo de color, título y descripción), una al lado de otra en cualquier ancho:
                     con poco lugar el círculo va arriba y el texto centrado debajo; desde `@md` pasa a fila */}
                 <div className="grid w-full grid-cols-3 items-start gap-2">
-                  <button type="button" className="flex h-20 w-full min-w-0 flex-col items-center justify-center gap-1.5 rounded-3xl border-[1.5px] border-border bg-[var(--m-input)] px-2 py-2 text-center transition-colors @md:h-14 @md:flex-row @md:justify-start @md:gap-3.5 @md:rounded-[40px] @md:py-2 @md:pr-4 @md:pl-2.5 @md:text-left hover:bg-foreground/5 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground disabled:pointer-events-none disabled:opacity-50" onClick={() => openImport()} disabled={generating}>
+                  <button type="button" className="flex h-20 w-full min-w-0 flex-col items-center justify-center gap-1.5 rounded-3xl border-[1.5px] border-border bg-[var(--m-input)] px-2 py-2 text-center transition-colors @md:h-14 @md:flex-row @md:justify-start @md:gap-3.5 @md:rounded-[40px] @md:py-2 @md:pr-4 @md:pl-2.5 @md:text-left hover:bg-foreground/5 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground disabled:pointer-events-none disabled:opacity-50 disabled:border-transparent" onClick={() => openImport()} disabled={generating}>
                     <span aria-hidden className="flex size-7 shrink-0 items-center justify-center rounded-full text-[#131C33] @md:size-9" style={{ background: 'var(--m-accent)' }}><ClipboardPaste className="h-3.5 w-3.5 @md:h-4 @md:w-4" /></span>
                     <span className="flex min-w-0 flex-col leading-tight @md:flex-1">
                       <span className="font-display text-xs font-bold @md:text-sm">Pegar letra</span>
                     </span>
                   </button>
                   <div className="flex min-w-0 flex-col gap-1">
-                    <button type="button" className="flex h-20 w-full min-w-0 flex-col items-center justify-center gap-1.5 rounded-3xl border-[1.5px] border-border bg-[var(--m-input)] px-2 py-2 text-center transition-colors @md:h-14 @md:flex-row @md:justify-start @md:gap-3.5 @md:rounded-[40px] @md:py-2 @md:pr-4 @md:pl-2.5 @md:text-left hover:bg-foreground/5 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground disabled:pointer-events-none disabled:opacity-50" onClick={() => fileInputRef.current?.click()} disabled={generating}>
+                    <button type="button" className="flex h-20 w-full min-w-0 flex-col items-center justify-center gap-1.5 rounded-3xl border-[1.5px] border-border bg-[var(--m-input)] px-2 py-2 text-center transition-colors @md:h-14 @md:flex-row @md:justify-start @md:gap-3.5 @md:rounded-[40px] @md:py-2 @md:pr-4 @md:pl-2.5 @md:text-left hover:bg-foreground/5 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground disabled:pointer-events-none disabled:opacity-50 disabled:border-transparent" onClick={() => fileInputRef.current?.click()} disabled={generating}>
                       <span aria-hidden className="flex size-7 shrink-0 items-center justify-center rounded-full text-[#131C33] @md:size-9" style={{ background: '#7B93E8' }}><Upload className="h-3.5 w-3.5 @md:h-4 @md:w-4" /></span>
                       <span className="flex min-w-0 flex-col leading-tight @md:flex-1">
                         <span className="font-display text-xs font-bold @md:text-sm">Subir archivo</span>
@@ -1009,7 +1012,7 @@ export function LyricsStudio({
                     </button>
                     <p className="text-center text-[10px] text-muted-foreground">Archivos .txt o .md.</p>
                   </div>
-                  <button type="button" className="flex h-20 w-full min-w-0 flex-col items-center justify-center gap-1.5 rounded-3xl border-[1.5px] border-border bg-[var(--m-input)] px-2 py-2 text-center transition-colors @md:h-14 @md:flex-row @md:justify-start @md:gap-3.5 @md:rounded-[40px] @md:py-2 @md:pr-4 @md:pl-2.5 @md:text-left hover:bg-foreground/5 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground disabled:pointer-events-none disabled:opacity-50" onClick={() => setView('saved')} disabled={generating}>
+                  <button type="button" className="flex h-20 w-full min-w-0 flex-col items-center justify-center gap-1.5 rounded-3xl border-[1.5px] border-border bg-[var(--m-input)] px-2 py-2 text-center transition-colors @md:h-14 @md:flex-row @md:justify-start @md:gap-3.5 @md:rounded-[40px] @md:py-2 @md:pr-4 @md:pl-2.5 @md:text-left hover:bg-foreground/5 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground disabled:pointer-events-none disabled:opacity-50 disabled:border-transparent" onClick={() => setView('saved')} disabled={generating}>
                     <span aria-hidden className="flex size-7 shrink-0 items-center justify-center rounded-full text-[#131C33] @md:size-9" style={{ background: 'var(--m-gold)' }}><BookOpen className="h-3.5 w-3.5 @md:h-4 @md:w-4" /></span>
                     <span className="flex min-w-0 flex-col leading-tight @md:flex-1">
                       <span className="font-display text-xs font-bold @md:text-sm">Mis letras</span>
@@ -1076,27 +1079,12 @@ export function LyricsStudio({
 
                 {/* Selector de grupo como el de «Duración» de las opciones de design-V2 (`.seg.dur-seg`): una sola cápsula con borde de 1,5 px y 4 px de relleno; cada opción
                     es una píldora de al menos 44 px con el nombre arriba y la duración aproximada abajo (12 px, atenuada); la elegida va en `--m-selected` y negrita */}
-                <div className="flex gap-0.5 rounded-full border-[1.5px] border-line p-1" role="radiogroup" aria-label="Duración">
-                  {DURATIONS.map((d) => {
-                    const active = duration === d.id;
-                    return (
-                      <button
-                        key={d.id}
-                        type="button"
-                        role="radio"
-                        aria-checked={active}
-                        onClick={() => setDuration(duration === d.id ? '' : d.id)}
-                        className={cn(
-                          'flex min-h-11 min-w-0 flex-1 flex-col items-center justify-center gap-0 rounded-full px-2.5 py-1 text-sm leading-[1.2] whitespace-nowrap transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground',
-                          active ? 'bg-selected font-bold text-on-selected' : 'font-medium text-foreground hover:bg-foreground/10'
-                        )}
-                      >
-                        {d.label}
-                        <span className={cn('text-xs leading-[1.2] font-medium', active ? 'opacity-90' : 'opacity-75')}>{d.hint}</span>
-                      </button>
-                    );
-                  })}
-                </div>
+                <SegmentedTabs
+                  tabs={DURATIONS.map((d) => ({ key: d.id, label: d.label, hint: d.hint, icon: Clock }))}
+                  value={duration || null}
+                  onChange={(id) => setDuration(duration === id ? '' : id)}
+                  ariaLabel="Duración"
+                />
               </div>
 
               {/* Estructura / Idioma / Letrista (en una sola fila cuando hay lugar) ---- */}
@@ -1668,7 +1656,7 @@ El estribillo que queremos recordar...`}
                 onChange={(e) => setSavedSearch(e.target.value)}
                 placeholder="Buscar en mis letras"
                 aria-label="Buscar en mis letras"
-                className="h-11 w-full rounded-full pl-10 text-sm font-normal"
+                className="h-11 w-full rounded-full pl-10 text-base font-normal md:text-sm"
               />
             </div>
 

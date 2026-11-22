@@ -1,10 +1,11 @@
+'use client';
 
 /**
  * Barra de pestañas segmentada (mismo componente `seg fill` del mockup letra-input): una única píldora
- * deslizante marca la pestaña activa; scrollable en mobile y arrastrable con el mouse. La usan la
- * Biblioteca y el Perfil.
+ * deslizante marca la pestaña activa; scrollable en mobile y arrastrable con el mouse; la opción elegida muestra
+ * su ícono. Es el selector de grupo de todo el sistema (Biblioteca, Perfil, Notificaciones, Actividad, Comunidad…).
  */
-import { useLayoutEffect, useRef, useState, type ComponentType, type PointerEvent as ReactPointerEvent } from 'react';
+import { useLayoutEffect, useRef, useState, type ComponentType, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
 import { cn } from '@/lib/utils';
 
 export function SegmentedTabs<K extends string>({
@@ -14,14 +15,25 @@ export function SegmentedTabs<K extends string>({
   ariaLabel,
   className,
   variant = 'default',
+  trailing,
+  trailingClassName,
+  iconOnly = false,
 }: {
-  tabs: ReadonlyArray<{ key: K; label: string; icon: ComponentType<{ className?: string }> }>;
-  value: K;
+  /** `icon` se muestra solo en la opción elegida; `hint` es una segunda línea chica bajo el nombre (ej. «~1 min»). */
+  tabs: ReadonlyArray<{ key: K; label: string; icon?: ComponentType<{ className?: string }>; hint?: string; count?: number }>;
+  /** `null` = ninguna elegida (el indicador no se muestra). */
+  value: K | null;
+  /** Se llama también al tocar la opción ya elegida (quien lo use puede interpretarlo como «quitar»). */
   onChange: (key: K) => void;
   ariaLabel: string;
   className?: string;
   /** `trash`: el selector de la Papelera de design-V2 (borde al 50 %, texto al 62 %, activo en dorado con texto navy). */
   variant?: 'default' | 'trash';
+  /** Contenido dentro del mismo contenedor, a la derecha de las opciones (ej. un buscador). */
+  trailing?: ReactNode;
+  trailingClassName?: string;
+  /** Muestra siempre el ícono de cada opción y deja el nombre solo para lectores de pantalla (y como tooltip). */
+  iconOnly?: boolean;
 }) {
   const trash = variant === 'trash';
   /* Indicador deslizante: una sola "píldora" que se mueve (left/width) hasta la pestaña activa. */
@@ -31,8 +43,8 @@ export function SegmentedTabs<K extends string>({
   const [animate, setAnimate] = useState(false);
   useLayoutEffect(() => {
     const measure = () => {
-      const el = tabRefs.current[value];
-      if (el) setThumb({ left: el.offsetLeft, width: el.offsetWidth });
+      const el = value == null ? null : tabRefs.current[value];
+      setThumb(el ? { left: el.offsetLeft, width: el.offsetWidth } : null);
     };
     measure();
     const raf = requestAnimationFrame(() => setAnimate(true)); // la primera medición no se anima
@@ -74,57 +86,90 @@ export function SegmentedTabs<K extends string>({
   };
 
   useLayoutEffect(() => {
-    tabRefs.current[value]?.scrollIntoView({ block: 'nearest', inline: 'center', behavior: 'smooth' });
+    /* Centra la opción elegida moviendo SOLO la barra (scrollIntoView también movería la página y dejaría el contenedor cortado). */
+    const list = listRef.current;
+    const el = value == null ? null : tabRefs.current[value];
+    if (!list || !el) return;
+    const left = Math.max(0, Math.min(el.offsetLeft - (list.clientWidth - el.offsetWidth) / 2, list.scrollWidth - list.clientWidth));
+    list.scrollTo({ left, behavior: animate ? 'smooth' : 'auto' });
   }, [value]);
 
   return (
-    <nav aria-label={ariaLabel} className={className}>
-      <div
-        ref={listRef}
-        role="tablist"
-        onPointerDown={onListPointerDown}
-        onClickCapture={(e) => {
-          if (dragged.current) {
-            e.preventDefault();
-            e.stopPropagation();
-          }
-        }}
-        className={cn('relative flex gap-1 scrollbar-none select-none overflow-x-auto rounded-[28px] border-[1.5px] p-1', trash ? 'border-line/50' : 'border-line')}
-      >
-        {thumb && (
-          <span
-            aria-hidden
-            className={cn(
-              'pointer-events-none absolute top-1 bottom-1 rounded-[22px] motion-reduce:transition-none', trash ? 'bg-gold' : 'bg-selected',
-              animate && 'transition-[left,width] duration-300 ease-[cubic-bezier(0.4,0,0.2,1)]'
-            )}
-            style={{ left: thumb.left, width: thumb.width }}
-          />
-        )}
-        {tabs.map(({ key, label, icon: Icon }) => {
-          const active = value === key;
-          return (
-            <button
-              key={key}
-              ref={(el) => {
-                tabRefs.current[key] = el;
-              }}
-              type="button"
-              role="tab"
-              aria-selected={active}
-              onClick={() => onChange(key)}
+    <nav aria-label={ariaLabel} className={cn('min-w-0 max-w-full', className)}>
+      {/* Como siempre: el borde y el relleno son del propio carril que se desliza, así la opción elegida queda recortada por el contenedor y nunca sale de él */}
+        <div
+          ref={listRef}
+          role="tablist"
+          onPointerDown={onListPointerDown}
+          onClickCapture={(e) => {
+            if (dragged.current) {
+              e.preventDefault();
+              e.stopPropagation();
+            }
+          }}
+          className={cn(
+            'relative flex items-center gap-1 scrollbar-none select-none overflow-x-auto rounded-[28px] border-[1.5px] p-1',
+            trash ? 'border-line/50' : 'border-line'
+          )}
+        >
+          {thumb && (
+            <span
+              aria-hidden
               className={cn(
-                'relative z-[1] flex h-10 flex-1 shrink-0 items-center justify-center gap-1.5 rounded-[22px] px-3 text-[12.5px] sm:h-11 sm:px-4 sm:text-[13px] whitespace-nowrap transition-colors focus-visible:outline-2 focus-visible:outline-offset-2',
-                trash && 'h-10 px-3.5 text-sm sm:h-10 sm:px-3.5 sm:text-sm',
-                active ? (trash ? 'font-bold text-[#131C33]' : 'font-bold text-on-selected') : trash ? 'font-medium text-foreground/60 hover:bg-accent' : 'font-medium text-foreground hover:bg-accent'
+                'pointer-events-none absolute top-1 bottom-1 rounded-[22px] motion-reduce:transition-none', trash ? 'bg-gold' : 'bg-selected',
+                animate && 'transition-[left,width] duration-300 ease-[cubic-bezier(0.4,0,0.2,1)]'
               )}
-            >
-              {active && <Icon className="h-3.5 w-3.5 shrink-0" aria-hidden />}
-              {label}
-            </button>
-          );
-        })}
-      </div>
+              style={{ left: thumb.left, width: thumb.width }}
+            />
+          )}
+          {tabs.map(({ key, label, icon: Icon, hint, count }) => {
+            const active = value === key;
+            return (
+              <button
+                key={key}
+                ref={(el) => {
+                  tabRefs.current[key] = el;
+                }}
+                type="button"
+                role="tab"
+                title={iconOnly ? label : undefined}
+                aria-selected={active}
+                onClick={() => onChange(key)}
+                className={cn(
+                  'relative z-[1] flex shrink-0 items-center justify-center gap-1.5 rounded-[22px] px-3 text-[12.5px] sm:px-4 sm:text-[13px] whitespace-nowrap transition-colors focus-visible:outline-2 focus-visible:outline-offset-2',
+                  trailing ? 'flex-none' : 'flex-1',
+                  hint ? 'min-h-11 flex-col gap-0 py-1 leading-[1.2]' : 'h-10 sm:h-11',
+                  trash && 'h-10 px-3.5 text-sm sm:h-10 sm:px-3.5 sm:text-sm',
+                  active ? (trash ? 'font-bold text-[#131C33]' : 'font-bold text-on-selected') : trash ? 'font-medium text-foreground/60 hover:bg-accent' : 'font-medium text-foreground hover:bg-accent'
+                )}
+              >
+                {iconOnly && Icon ? (
+                  <>
+                    <Icon className="h-4 w-4 shrink-0" aria-hidden />
+                    <span className="sr-only">{label}</span>
+                  </>
+                ) : hint ? (
+                  <>
+                    <span className="inline-flex items-center gap-1.5">
+                      {active && Icon && <Icon className="h-3.5 w-3.5 shrink-0" aria-hidden />}
+                      {label}
+                    </span>
+                    <span className={cn('text-xs leading-[1.2] font-medium', active ? 'opacity-90' : 'opacity-75')}>{hint}</span>
+                  </>
+                ) : (
+                  <>
+                    {active && Icon && <Icon className="h-3.5 w-3.5 shrink-0" aria-hidden />}
+                    {label}
+                    {count != null && (
+                      <span className="h-5 min-w-5 rounded-full bg-current/15 px-1.5 text-center text-xs leading-5 font-bold tabular-nums">{count}</span>
+                    )}
+                  </>
+                )}
+              </button>
+            );
+          })}
+          {trailing && <div className={cn('shrink-0', trailingClassName)}>{trailing}</div>}
+        </div>
     </nav>
   );
 }

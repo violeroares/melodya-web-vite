@@ -1,3 +1,4 @@
+'use client';
 
 /**
  * MELODYA WEB — NotificationsView: centro de notificaciones (ruta #/notifications, 🔒).
@@ -21,48 +22,63 @@ import {
   useQueryClient,
   type InfiniteData,
 } from '@tanstack/react-query';
-import { Bell, Check, CheckCheck, Heart, Loader2, MessageCircle, Search, Sparkles, UserPlus, X } from 'lucide-react';
-import { notificationsApi } from '@/lib/api';
+import {
+  Bell,
+  BellDot,
+  CheckCheck,
+  Heart,
+  Loader2,
+  MessageCircle,
+  Search,
+  Sparkles,
+  UserPlus,
+  X,
+  type LucideIcon,
+} from 'lucide-react';
+import { communityApi, notificationsApi } from '@/lib/api';
 import { navigate } from '@/lib/router';
 import { toUserMessage } from '@/lib/errors';
 import { cn } from '@/lib/utils';
 import { formatRelative, useDebounce } from '@/hooks';
 import { AuthAvatar, EmptyState, ErrorState } from '@/components/common';
+import { SegmentedTabs } from '@/components/common/SegmentedTabs';
 import { Button } from '@/components/ui/button';
+import { TabCtaButton } from '@/features/library/library-utils';
 import { Input } from '@/components/ui/input';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Switch } from '@/components/ui/switch';
 import { useToast } from '@/hooks/use-toast';
-import type { AppNotification, NotificationType, Paginated } from '@/types';
+import type { AppNotification, Paginated } from '@/types';
 
 const PAGE_SIZE = 20;
 const SEARCH_DEBOUNCE_MS = 400;
 
 /* ── Categorías del filtro (mapean a ?type= csv del backend) ── */
-type NotificationCategory = 'all' | 'followers' | 'comments' | 'likes' | 'system';
+type NotificationCategory = 'all' | 'followers' | 'comments' | 'likes' | 'system' | 'unread';
 
-const CATEGORIES: Array<{ value: NotificationCategory; label: string; types?: string }> = [
-  { value: 'all', label: 'Todas' },
-  { value: 'followers', label: 'Seguidores', types: 'NEW_FOLLOWER' },
-  { value: 'comments', label: 'Comentarios', types: 'SONG_COMMENT,COMMENT_REPLY' },
-  { value: 'likes', label: 'Me gusta', types: 'SONG_LIKE,COMMENT_LIKE' },
-  { value: 'system', label: 'Sistema', types: 'SYSTEM' },
+const CATEGORIES: Array<{
+  value: NotificationCategory;
+  label: string;
+  types?: string;
+  icon: LucideIcon;
+}> = [
+  { value: 'all', label: 'Todas', icon: Bell },
+  { value: 'followers', label: 'Seguidores', types: 'NEW_FOLLOWER', icon: UserPlus },
+  {
+    value: 'comments',
+    label: 'Comentarios',
+    types: 'SONG_COMMENT,COMMENT_REPLY',
+    icon: MessageCircle,
+  },
+  { value: 'likes', label: 'Me gusta', types: 'SONG_LIKE,COMMENT_LIKE', icon: Heart },
+  { value: 'system', label: 'Sistema', types: 'SYSTEM', icon: Sparkles },
+  /* Una opción más del selector: muestra solo lo no leído (de todas las categorías) */
+  { value: 'unread', label: 'Solo sin leer', icon: BellDot },
 ];
 
-/* ── Presentación por tipo: ícono en círculo suave ── */
-function typeVisual(type: NotificationType): { Icon: typeof UserPlus; circle: string; filled?: boolean } {
-  switch (type) {
-    case 'NEW_FOLLOWER':
-      return { Icon: UserPlus, circle: 'bg-element-sound/25 text-foreground' };
-    case 'SONG_COMMENT':
-    case 'COMMENT_REPLY':
-      return { Icon: MessageCircle, circle: 'bg-coral/15 text-coral' };
-    case 'SONG_LIKE':
-    case 'COMMENT_LIKE':
-      return { Icon: Heart, circle: 'bg-amber/15 text-amber-strong', filled: true };
-    default:
-      return { Icon: Sparkles, circle: 'bg-surface-2 text-muted-foreground' };
-  }
+/** Aviso de sistema que informa un fallo («No pudimos generar…»): el backend no manda una marca, se reconoce por el texto. */
+const FAILURE_TEXT = /no pudimos|no se pudo|fall[óo]|error/i;
+function isFailureNotice(n: AppNotification): boolean {
+  return n.type === 'SYSTEM' && FAILURE_TEXT.test(n.commentExcerpt ?? '');
 }
 
 /** Destino de la fila (solo tipos con contexto; SYSTEM no navega). */
@@ -80,22 +96,32 @@ function NotificationText({ n }: { n: AppNotification }) {
     // Los avisos del sistema viajan en commentExcerpt (contrato v0.18.0).
     return <>{n.commentExcerpt ?? 'Novedades de Melodya'}</>;
   }
-  const actor = <b className="font-semibold text-foreground">{n.actor?.name ?? 'Alguien'}</b>;
-  const song = n.song ? <span className="font-medium text-foreground">«{n.song.title}»</span> : null;
+  const actor = <b className="font-bold text-foreground">{n.actor?.name ?? 'Alguien'}</b>;
+  const song = n.song ? <span className="font-bold text-muted-foreground">«{n.song.title}»</span> : null;
   switch (n.type) {
     case 'SONG_COMMENT':
-      return song ? <>{actor} comentó en {song}</> : <>{actor} comentó tu canción</>;
+      return song ? (
+        <>
+          {actor} comentó en {song}
+        </>
+      ) : (
+        <>{actor} comentó tu canción</>
+      );
     case 'COMMENT_REPLY':
-      return song ? <>{actor} respondió tu comentario en {song}</> : <>{actor} respondió tu comentario</>;
+      return song ? (
+        <>
+          {actor} respondió tu comentario en {song}
+        </>
+      ) : (
+        <>{actor} respondió tu comentario</>
+      );
     case 'COMMENT_LIKE':
       return song ? (
         <>
           A {actor} le gustó tu comentario en {song}
         </>
       ) : (
-        <>
-          A {actor} le gustó tu comentario
-        </>
+        <>A {actor} le gustó tu comentario</>
       );
     case 'SONG_LIKE':
       return song ? (
@@ -103,9 +129,7 @@ function NotificationText({ n }: { n: AppNotification }) {
           A {actor} le gustó {song}
         </>
       ) : (
-        <>
-          A {actor} le gustó tu canción
-        </>
+        <>A {actor} le gustó tu canción</>
       );
     default:
       return <>{actor} empezó a seguirte</>;
@@ -113,45 +137,78 @@ function NotificationText({ n }: { n: AppNotification }) {
 }
 
 /* ── Fila de notificación ── */
-function NotificationRow({
-  n,
-  onOpen,
-  onMarkRead,
-}: {
-  n: AppNotification;
-  onOpen: (n: AppNotification) => void;
-  onMarkRead: (id: string) => void;
-}) {
+function NotificationRow({ n, onOpen }: { n: AppNotification; onOpen: (n: AppNotification) => void }) {
   const unread = !n.readAt;
   const href = notificationHref(n);
   const clickable = Boolean(href);
-  const { Icon, circle, filled } = typeVisual(n.type);
   const excerpt = n.type !== 'SYSTEM' ? n.commentExcerpt : null;
+  const failure = isFailureNotice(n);
+  const leadAvatar = n.type !== 'SYSTEM' && Boolean(n.actor);
+  /* Si la notificación no trae la foto del actor, se pide a su perfil público (cache compartida con el perfil). */
+  const profileQuery = useQuery({
+    queryKey: ['community', 'user', n.actor?.id],
+    queryFn: () => communityApi.userProfile(n.actor!.id),
+    enabled: leadAvatar && !n.actor?.avatarUrl,
+    staleTime: 5 * 60_000,
+  });
+  const actorAvatar = n.actor?.avatarUrl ?? profileQuery.data?.avatarUrl ?? null;
 
   /* El cuerpo cambia de elemento: botón real si navega, div si no (SYSTEM). */
   const bodyClass =
-    'flex min-w-0 flex-1 items-start gap-3 rounded-xl text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background';
+    'flex min-w-0 flex-1 items-center gap-3 rounded-[32px_12px_12px_32px] text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background';
 
   const content = (
     <>
-      <span className={cn('flex h-9 w-9 shrink-0 items-center justify-center rounded-full', circle)} aria-hidden>
-        <Icon className={cn('h-4 w-4', filled && 'fill-current')} />
+      <span className="relative shrink-0">
+        {leadAvatar && n.actor ? (
+          /* Seguidores, comentarios y me gusta: la foto real de quien lo hizo */
+          <AuthAvatar
+            src={actorAvatar}
+            name={n.actor.name}
+            className="size-11 border-0 sm:size-[52px]"
+            fallbackClassName="bg-[var(--m-accent-soft)] text-base font-bold text-[#131C33]"
+          />
+        ) : failure ? (
+          /* Error de sistema: círculo con borde punteado y «!», como en el diseño */
+          <span
+            className="flex size-11 items-center justify-center rounded-full border-[2.5px] sm:size-[52px] border-dashed border-[var(--m-label)] text-[24px] font-bold leading-none text-[var(--m-label)]"
+            aria-hidden
+          >
+            !
+          </span>
+        ) : (
+          /* Sin foto y sin error (avisos de Melodya): círculo dorado con la chispa, como en el diseño */
+          <span
+            className="flex size-11 items-center justify-center rounded-full bg-gold sm:size-[52px] text-[#131C33]"
+            aria-hidden
+          >
+            <Sparkles className="h-[22px] w-[22px]" />
+          </span>
+        )}
+        {/* Punto de no leída sobre el círculo (esquina superior derecha) */}
+        {unread && (
+          <span
+            className="absolute right-0 top-0 size-3 animate-in fade-in zoom-in-95 rounded-full bg-[var(--m-accent)]"
+            aria-hidden
+          />
+        )}
       </span>
       <span className="min-w-0 flex-1">
-        <span className="flex flex-wrap items-center justify-between gap-x-3 gap-y-0.5">
-          <span className="flex min-w-0 items-center gap-1.5 text-sm leading-snug text-foreground/80">
-            {n.actor && (
+        <span className="flex items-start justify-between gap-3">
+          {/* Una sola línea de texto corrido (avatar + frase), que envuelve sin partirse en columnas */}
+          <span className="min-w-0 flex-1 text-[15px] font-bold leading-[1.3] text-foreground [overflow-wrap:anywhere]">
+            {n.actor && !leadAvatar && (
               <AuthAvatar
                 src={n.actor.avatarUrl}
                 name={n.actor.name}
-                className="h-5 w-5 shrink-0"
+                className="mr-1.5 inline-flex h-5 w-5 align-middle"
                 fallbackClassName="text-[8px]"
               />
             )}
             <NotificationText n={n} />
           </span>
           <time
-            className="shrink-0 text-xs text-muted-foreground"
+            className="mt-0.5 shrink-0 whitespace-nowrap text-[12.5px] leading-[1.3] text-muted-foreground"
             dateTime={n.createdAt}
             title={new Date(n.createdAt).toLocaleString('es-AR')}
           >
@@ -159,7 +216,10 @@ function NotificationRow({
           </time>
         </span>
         {excerpt && (
-          <span className="mt-0.5 block truncate text-xs italic text-muted-foreground" aria-hidden>
+          <span
+            className="mt-0.5 block truncate font-display text-[13.5px] font-medium leading-[1.35] text-muted-foreground"
+            aria-hidden
+          >
             «{excerpt}»
           </span>
         )}
@@ -170,21 +230,16 @@ function NotificationRow({
   return (
     <li
       className={cn(
-        'group flex items-start gap-2.5 rounded-xl px-3 py-3 transition-colors',
-        unread ? 'bg-amber/5' : '',
-        clickable ? 'hover:bg-surface-2/50' : 'cursor-default'
+        'group flex items-center gap-3 rounded-[40px_16px_16px_40px] border-[1.5px] py-3 pl-3 pr-3 transition-colors sm:pr-4',
+        unread ? 'border-line bg-surface' : 'border-border',
+        clickable ? 'hover:bg-surface' : 'cursor-default',
       )}
     >
-      {/* Punto ámbar de no leída (columna fija para no mover el layout) */}
-      <span className="mt-4 flex h-2 w-2 shrink-0 items-center justify-center" aria-hidden>
-        {unread && <span className="h-2 w-2 animate-in fade-in zoom-in-95 rounded-full gradient-warm" />}
-      </span>
-
       {clickable ? (
         <button
           type="button"
           onClick={() => onOpen(n)}
-          aria-label={`Abrir: ${n.type === 'NEW_FOLLOWER' ? `perfil de ${n.actor?.name ?? 'alguien'}` : n.song?.title ?? 'notificación'}`}
+          aria-label={`Abrir: ${n.type === 'NEW_FOLLOWER' ? `perfil de ${n.actor?.name ?? 'alguien'}` : (n.song?.title ?? 'notificación')}`}
           className={bodyClass}
         >
           {content}
@@ -192,25 +247,60 @@ function NotificationRow({
       ) : (
         <div className={bodyClass}>{content}</div>
       )}
-
-      {/* Marcar leída explícita: aparece al pasar por la fila (siempre en touch y focus) */}
-      {unread && (
-        <button
-          type="button"
-          onClick={(e) => {
-            e.stopPropagation();
-            onMarkRead(n.id);
-          }}
-          aria-label="Marcar como leída"
-          title="Marcar como leída"
-          className="mt-1.5 shrink-0 rounded-md p-1.5 text-muted-foreground opacity-0 transition-all hover:bg-surface-2 hover:text-foreground focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring group-hover:opacity-100 max-sm:opacity-100"
-        >
-          <Check className="h-3.5 w-3.5" aria-hidden />
-        </button>
-      )}
     </li>
   );
 }
+
+/* ── Buscador de la bandeja: el mismo campo, adentro o afuera del contenedor del selector según el ancho ── */
+function NotificationSearch({
+  value,
+  onChange,
+  className,
+  outside,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  className?: string;
+  outside?: boolean;
+}) {
+  const inputRef = useRef<HTMLInputElement | null>(null);
+  return (
+    <div className={cn('relative min-w-0 flex-1', className)}>
+      <Search
+        className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground"
+        aria-hidden
+      />
+      <Input
+        ref={inputRef}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        type="text"
+        placeholder="Buscar en notificaciones…"
+        aria-label="Buscar en notificaciones"
+        className={cn(
+          'rounded-full bg-[var(--m-input)] pl-9 pr-8 text-base font-normal md:text-sm',
+          outside ? 'h-11 border-[1.5px] border-line' : 'h-10 rounded-[20px] border-0',
+        )}
+      />
+      {value && (
+        <button
+          type="button"
+          onClick={() => {
+            onChange('');
+            inputRef.current?.focus();
+          }}
+          aria-label="Limpiar la búsqueda"
+          className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded-full p-1.5 text-muted-foreground transition-colors hover:bg-surface-2 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        >
+          <X className="h-3.5 w-3.5" aria-hidden />
+        </button>
+      )}
+    </div>
+  );
+}
+
+/** Loader2 girando, con la forma de un ícono para pasarlo a TabCtaButton. */
+const SpinnerIcon = ({ className }: { className?: string }) => <Loader2 className={cn(className, 'animate-spin')} aria-hidden />;
 
 /* ══════════════ Vista principal ══════════════ */
 export function NotificationsView() {
@@ -219,11 +309,10 @@ export function NotificationsView() {
 
   /* Filtros locales (no viven en la URL) */
   const [category, setCategory] = useState<NotificationCategory>('all');
-  const [unreadOnly, setUnreadOnly] = useState(false);
   const [searchInput, setSearchInput] = useState('');
-  const searchInputRef = useRef<HTMLInputElement | null>(null);
   const search = useDebounce(searchInput.trim(), SEARCH_DEBOUNCE_MS);
 
+  const unreadOnly = category === 'unread';
   const activeTypes = CATEGORIES.find((c) => c.value === category)?.types;
   const hasFilters = category !== 'all' || unreadOnly || search.length > 0;
 
@@ -274,11 +363,11 @@ export function NotificationsView() {
                 }),
               })),
             }
-          : old
+          : old,
       );
       if (wasUnread) {
         qc.setQueryData<{ count: number }>(['notifications', 'unread-count'], (old) =>
-          old ? { count: Math.max(0, old.count - 1) } : old
+          old ? { count: Math.max(0, old.count - 1) } : old,
         );
       }
     },
@@ -297,7 +386,11 @@ export function NotificationsView() {
       });
     },
     onError: (err) => {
-      toast({ title: 'No pudimos marcarlas como leídas', description: toUserMessage(err), variant: 'destructive' });
+      toast({
+        title: 'No pudimos marcarlas como leídas',
+        description: toUserMessage(err),
+        variant: 'destructive',
+      });
     },
     onSettled: () => {
       void qc.invalidateQueries({ queryKey: ['notifications'] });
@@ -313,101 +406,61 @@ export function NotificationsView() {
 
   const clearFilters = () => {
     setCategory('all');
-    setUnreadOnly(false);
     setSearchInput('');
   };
 
   return (
     <div className="view-in mx-auto w-full max-w-7xl space-y-5">
       {/* Encabezado */}
-      <header className="flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <h1 className="font-display text-3xl font-extrabold tracking-tight text-foreground">Notificaciones</h1>
-          <p className="mt-1 text-sm text-muted-foreground">Todo lo que pasa con tu música, en un solo lugar</p>
-        </div>
-        {unreadCount > 0 && (
-          <Button
-            variant="ghost"
-            size="sm"
-            className="rounded-full text-amber-strong"
+      {/* El botón va junto al título si entra; si no, baja debajo del subtítulo */}
+      <header className="@container grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1">
+        <h1 className="min-w-0 font-display text-3xl font-extrabold tracking-tight text-foreground">Notificaciones</h1>
+        <p className="col-span-2 row-start-2 text-sm text-muted-foreground">
+          Todo lo que pasa con tu música, en un solo lugar
+        </p>
+        {/* Mismo botón que «Reproducir todo» de la Biblioteca (contorno fino); siempre visible, deshabilitado si no hay nada sin leer */}
+        <div className="col-span-2 row-start-3 mt-2 justify-self-start @[34rem]:col-span-1 @[34rem]:col-start-2 @[34rem]:row-start-1 @[34rem]:mt-0">
+          <TabCtaButton
+            icon={markAllMutation.isPending ? SpinnerIcon : CheckCheck}
+            kind="ghost"
+            iconOnlyOnMobile={false}
             onClick={() => markAllMutation.mutate()}
-            disabled={markAllMutation.isPending}
+            disabled={markAllMutation.isPending || unreadCount === 0}
           >
-            {markAllMutation.isPending ? (
-              <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
-            ) : (
-              <CheckCheck className="h-4 w-4" aria-hidden />
-            )}
             Marcar todas como leídas
-          </Button>
-        )}
+          </TabCtaButton>
+        </div>
       </header>
 
       {/* Barra de filtros (sticky bajo el header global) */}
-      <div className="sticky top-16 z-20 flex flex-wrap items-center gap-2 rounded-2xl border border-border/70 bg-surface/95 p-2.5">
-        <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="Categoría de notificaciones">
-          {CATEGORIES.map((c) => {
-            const active = category === c.value;
-            return (
-              <button
-                key={c.value}
-                type="button"
-                onClick={() => setCategory(c.value)}
-                aria-pressed={active}
-                className={cn(
-                  'rounded-full px-3 py-1.5 text-xs font-semibold transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
-                  active
-                    ? 'gradient-warm text-primary-foreground'
-                    : 'border border-border bg-surface-2 text-muted-foreground hover:border-amber/40 hover:text-foreground'
-                )}
-              >
-                {c.label}
-              </button>
-            );
-          })}
-        </div>
+      <div className="@container sticky top-16 z-20 bg-background/95 py-2">
+        {/* Mismo selector de grupo del sistema (se desliza con el mouse y muestra el ícono de la opción elegida) */}
+        <SegmentedTabs
+          tabs={CATEGORIES.map((c) => ({ key: c.value, label: c.label, icon: c.icon }))}
+          value={category}
+          onChange={setCategory}
+          ariaLabel="Categoría de notificaciones"
+          /* Con lugar: el buscador va adentro del contenedor, a la derecha de las opciones */
+          trailing={<NotificationSearch value={searchInput} onChange={setSearchInput} />}
+          trailingClassName="ml-auto hidden w-60 @min-[50rem]:block"
+        />
 
-        <div className="ml-auto flex flex-1 flex-wrap items-center justify-end gap-2">
-          <label className="flex shrink-0 cursor-pointer items-center gap-2 rounded-full border border-border/70 bg-surface-2/50 py-1 pl-2 pr-3">
-            <Switch checked={unreadOnly} onCheckedChange={setUnreadOnly} aria-label="Solo sin leer" className="scale-90" />
-            <span className="text-xs font-medium text-muted-foreground">Solo sin leer</span>
-          </label>
-
-          <div className="relative min-w-0 flex-1 sm:max-w-60">
-            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" aria-hidden />
-            <Input
-              ref={searchInputRef}
-              value={searchInput}
-              onChange={(e) => setSearchInput(e.target.value)}
-              type="text"
-              placeholder="Buscar en notificaciones…"
-              aria-label="Buscar en notificaciones"
-              className="h-11 rounded-full pl-9 pr-8 text-sm font-normal"
-            />
-            {searchInput && (
-              <button
-                type="button"
-                onClick={() => {
-                  setSearchInput('');
-                  searchInputRef.current?.focus();
-                }}
-                aria-label="Limpiar la búsqueda"
-                className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded-full p-1.5 text-muted-foreground transition-colors hover:bg-surface-2 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-              >
-                <X className="h-3.5 w-3.5" aria-hidden />
-              </button>
-            )}
-          </div>
+        {/* Sin lugar (pantallas angostas): afuera del contenedor, a todo el ancho */}
+        <div className="mt-2 @min-[50rem]:hidden">
+          <NotificationSearch value={searchInput} onChange={setSearchInput} outside />
         </div>
       </div>
 
       {/* Lista */}
       {listQuery.isPending ? (
-        <div className="space-y-2" aria-busy="true" aria-label="Cargando notificaciones">
+        <div className="space-y-3" aria-busy="true" aria-label="Cargando notificaciones">
           {Array.from({ length: 6 }).map((_, i) => (
-            <div key={i} className="flex items-start gap-3 px-3 py-3">
-              <Skeleton className="mt-1 h-9 w-9 shrink-0 rounded-full" />
-              <div className="flex-1 space-y-2 pt-1">
+            <div
+              key={i}
+              className="flex items-center gap-3.5 rounded-[40px_16px_16px_40px] border-[1.5px] border-border py-3 pl-3 pr-4"
+            >
+              <Skeleton className="size-11 shrink-0 rounded-full sm:size-[52px]" />
+              <div className="flex-1 space-y-2">
                 <Skeleton className="h-3.5 w-2/3" />
                 <Skeleton className="h-3 w-1/3" />
               </div>
@@ -439,20 +492,18 @@ export function NotificationsView() {
         )
       ) : (
         <>
-          <div className="overflow-hidden rounded-cover border border-border/70 bg-surface/50">
-            <ul className="divide-y divide-border/50" aria-label="Notificaciones">
-              {items.map((n) => (
-                <NotificationRow key={n.id} n={n} onOpen={onOpen} onMarkRead={(id) => markReadMutation.mutate(id)} />
-              ))}
-            </ul>
-          </div>
+          <ul className="flex flex-col gap-3" aria-label="Notificaciones">
+            {items.map((n) => (
+              <NotificationRow key={n.id} n={n} onOpen={onOpen} />
+            ))}
+          </ul>
 
           {/* Paginación estilo infinito */}
           <div className="flex flex-col items-center gap-2 pt-1">
             {listQuery.hasNextPage && (
               <Button
                 variant="outline"
-                className="rounded-full px-6"
+                className="rounded-full border-[1.5px] border-line px-6"
                 onClick={() => void listQuery.fetchNextPage()}
                 disabled={listQuery.isFetchingNextPage}
               >
@@ -465,7 +516,7 @@ export function NotificationsView() {
                 )}
               </Button>
             )}
-            <p className="text-xs text-muted-foreground" aria-live="polite">
+            <p className="text-[13.5px] font-medium text-muted-foreground" aria-live="polite">
               {total} {total === 1 ? 'notificación' : 'notificaciones'}
             </p>
           </div>

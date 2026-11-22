@@ -1,3 +1,4 @@
+'use client';
 
 /**
  * MELODYA WEB — Biblioteca › Canciones.
@@ -533,9 +534,9 @@ function SongRow({
           id={song.id}
           src={song.coverUrl}
           alt=""
+          requireAuth={song.visibility === 'PRIVATE'}
           className={cn('size-12 shrink-0', current && 'ring-2 ring-primary')}
           rounded="rounded-full"
-          requireAuth={song.visibility === 'PRIVATE'}
         />
         <span className="min-w-0">
           <span className="block truncate text-sm font-semibold text-foreground">{song.title}</span>
@@ -650,7 +651,7 @@ function SongCard({
             current && 'ring-2 ring-primary ring-offset-2 ring-offset-background'
           )}
         >
-          <CoverArt id={song.id} src={song.coverUrl} alt="" className="aspect-square w-full transition-transform duration-300" rounded="rounded-[28px_28px_14px_14px]" requireAuth={song.visibility === 'PRIVATE'} />
+          <CoverArt id={song.id} src={song.coverUrl} alt="" requireAuth={song.visibility === 'PRIVATE'} className="aspect-square w-full transition-transform duration-300" rounded="rounded-[28px_28px_14px_14px]" />
         </button>
 
         {song.visibility === 'PUBLIC' && (
