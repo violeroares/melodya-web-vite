@@ -401,8 +401,8 @@ test('aislamiento: generar otra versión no borra el borrador de una canción nu
   const src = read('src/features/creator/CreatorWizard.tsx');
   // `hasSource` = «otra versión» o remix: ambos viven de su canción de origen y nunca tocan el borrador de una canción nueva
   assert.match(src, /if \(!hasSource && clearTheDraft\) clearDraft\(browserStorage\(\), userId, NEW_DRAFT\);/);
-  // «Empezar de cero» en creación normal sigue vaciando el borrador (restart); en «otra versión» pasa por el origen en blanco
-  assert.match(src, /\{!hasSource && !empty && \(\s*<button\s+type="button"\s+onClick=\{\(\) => \(recoveryActive \? setDiscardRecoveryOpen\(true\) : restart\(\)\)\}/);
+  // «Empezar de cero» en creación normal sigue vaciando el borrador (pide confirmación y luego restart(true), con la animación del agujero negro); en «otra versión» pasa por el origen en blanco
+  assert.match(src, /\{!hasSource && !empty && \(\s*<button\s+type="button"\s+onClick=\{\(\) => \(recoveryActive \? setDiscardRecoveryOpen\(true\) : setRestartConfirm\(true\)\)\}/);
   // el borrador solo se lee y se escribe fuera del modo versión/remix
   assert.match(src, /if \(!hydrated \|\| hasSource \|\| live\.phase !== 'idle'\) return;/);
   assert.match(src, /const hasSource = Boolean\(versionOfId\) \|\| isRemix;/);
@@ -461,7 +461,7 @@ test('mensajes: la carga correcta no deja texto visible; solo hay notas cuando h
 test('acciones del encabezado: mutuamente excluyentes según el modo y con la misma presentación', () => {
   const src = read('src/features/creator/CreatorWizard.tsx');
   // «Empezar de cero»: solo en creación normal (y con algo escrito); nunca en «otra versión»
-  assert.match(src, /\{!hasSource && !empty && \(\s*<button\s+type="button"\s+onClick=\{\(\) => \(recoveryActive \? setDiscardRecoveryOpen\(true\) : restart\(\)\)\}/);
+  assert.match(src, /\{!hasSource && !empty && \(\s*<button\s+type="button"\s+onClick=\{\(\) => \(recoveryActive \? setDiscardRecoveryOpen\(true\) : setRestartConfirm\(true\)\)\}/);
   assert.equal((src.match(/<Trash2 className="h-3 w-3" aria-hidden \/> Empezar de cero/g) ?? []).length, 1, 'una sola aparición como botón del encabezado');
   assert.ok(!/requestOrigin\(BLANK_ORIGIN\)\s*:\s*restart|versionOfId \? \(\) => requestOrigin/.test(src), 'el botón ya no limpia el origen');
   // «Crear canción nueva»: solo en «otra versión», navega a /create y no toca el borrador
