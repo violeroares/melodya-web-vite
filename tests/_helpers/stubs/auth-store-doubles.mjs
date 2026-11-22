@@ -8,9 +8,9 @@ export const authApi = {
     shared.calls.push({ fn: 'changePassword', body });
     return shared.changeResult;
   },
-  login: async () => { throw new Error('no usado'); },
+  login: async (body) => { if (shared.loginImpl) return shared.loginImpl(body); throw new Error('no usado'); },
   register: async () => { throw new Error('no usado'); },
-  logout: async () => ({ ok: true }),
+  logout: async (refreshToken) => { shared.logoutCalls = (shared.logoutCalls ?? 0) + 1; return shared.logoutImpl ? shared.logoutImpl(refreshToken) : { ok: true }; },
   logoutAll: async () => ({ ok: true }),
 };
 export const profileApi = { me: async () => (shared.meImpl ? shared.meImpl() : { id: 'u1', name: 'Ana' }) };

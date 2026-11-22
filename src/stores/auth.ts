@@ -7,6 +7,12 @@
  *  • 429, corte de red y 5xx son TRANSITORIOS: la sesión (tokens y usuario cargado) se conserva y se reintenta con backoff,
  *    respetando Retry-After.
  *  • El refresh proactivo se agenda con la expiración REAL del access token (claim `exp`), no con un TTL supuesto.
+ *  • ÉPOCA DE SESIÓN: cada cierre de sesión, rechazo definitivo o inicio de sesión sube `sessionEpoch`. Toda operación asíncrona captura la época
+ *    al empezar y, si cambió al terminar, descarta su resultado: una respuesta tardía (perfil, refresh) nunca restaura el usuario ni los
+ *    tokens de una sesión cerrada o de otra cuenta.
+ *  • RECUPERACIÓN: con credenciales guardadas y un error temporal (429 / red / 5xx) la sesión no se destruye ni se presenta como «invitado»:
+ *    `sessionRecovering` queda en true (la cabecera no ofrece Ingresar y las rutas privadas muestran su carga) hasta recuperarse, confirmar que
+ *    las credenciales no valen o cerrar sesión.
  */
 import { create } from 'zustand';
 import { authApi, profileApi } from '@/lib/api';
@@ -58,7 +64,8 @@ export function getAccessTokenSync(): string | null {
   return useAuthStore.getState().accessToken ?? loadStored()?.accessToken ?? null;
 }
 
-/** Resultado de intentar cargar el perfil: 'transient' = no se pudo ahora (429/red/5xx) pero la sesión sigue vigente. */
+/** Resultado de intentar cargar el perfil: 'transient' = no se pudo ahora (429/red/5xx) pero la sesión sigue vigente. Si la sesión cambió
+ *  (logout / otra cuenta) mientras la solicitud volaba, se informa 'unauthorized' SIN tocar ningún estado: el resultado se descarta. */
 export type LoadMeOutcome = 'ok' | 'unauthorized' | 'transient';
 
 interface AuthState {
@@ -66,6 +73,11 @@ interface AuthState {
   accessToken: string | null;
   status: 'idle' | 'loading' | 'authenticated' | 'guest';
   bootstrapPromise: Promise<void> | null;
+  /**
+   * Hay credenciales guardadas pero un error TEMPORAL (429 / red / 5xx) impide validar la sesión: se está recuperando sola. No es «invitado».
+   * Se limpia al recuperar, al confirmar credenciales inválidas, al cerrar sesión y al iniciar una sesión nueva.
+   */
+  sessionRecovering: boolean;
   login: (email: string, password: string) => Promise<void>;
   register: (email: string, password: string, name: string) => Promise<void>;
   logout: (all?: boolean) => Promise<void>;
@@ -85,6 +97,30 @@ let refreshFailures = 0;
 let recoveryFailures = 0;
 let storageSyncBound = false;
 
+/** Época de sesión: sube al cerrar sesión, al invalidarla y al iniciar una sesión nueva (ver el encabezado). */
+let sessionEpoch = 0;
+/** Época en la que ESTA pestaña está cerrando sesión (null si no). Mientras dure, el cliente HTTP no ve refresh token (un refresh que vuela no
+ *  puede persistir nada) pero el access token sigue disponible para que la solicitud de logout se autentique. Está atada a la época: en cuanto
+ *  algo la cambia (otro login, un rechazo definitivo, otra pestaña) deja de estar activa sola, sin banderas que limpiar a mano ni que puedan
+ *  quedar pegadas. */
+let closingEpoch: number | null = null;
+const isClosing = () => closingEpoch !== null && closingEpoch === sessionEpoch;
+
+function clearSessionTimers() {
+  if (refreshTimer) clearTimeout(refreshTimer);
+  if (recoveryTimer) clearTimeout(recoveryTimer);
+  refreshTimer = null;
+  recoveryTimer = null;
+}
+
+/** Invalida TODO lo pendiente de la sesión actual: resultados de solicitudes en vuelo, reintentos y temporizadores. */
+function invalidateSession() {
+  sessionEpoch += 1;
+  clearSessionTimers();
+  refreshFailures = 0;
+  recoveryFailures = 0;
+}
+
 const RETRY_BASE_MS = 15_000;
 const RETRY_MAX_MS = 5 * 60_000;
 /** Margen sobre Retry-After / la compuerta de 429: si el reintento cae unos ms ANTES de que termine el bloqueo, se rechaza sin
@@ -103,8 +139,10 @@ function retryDelayMs(failures: number, err: unknown, scope: RateScope = 'api'):
 function armRefreshTimer(ms: number) {
   if (typeof window === 'undefined') return;
   if (refreshTimer) clearTimeout(refreshTimer); // nunca dos timers de refresh a la vez
+  const epoch = sessionEpoch;
   refreshTimer = setTimeout(() => {
     refreshTimer = null;
+    if (epoch !== sessionEpoch) return; // la sesión cambió desde que se agendó
     void useAuthStore.getState().refreshSession();
   }, ms);
 }
@@ -138,14 +176,9 @@ function persistSession(session: StoredSession) {
 /** 401/403 definitivo del refresh (o refresh token vencido): sesión abajo + reset de todo el
  *  estado de usuario (caché de queries, player, borradores, object URLs). */
 function forceGuest() {
-  if (refreshTimer) clearTimeout(refreshTimer);
-  if (recoveryTimer) clearTimeout(recoveryTimer);
-  refreshTimer = null;
-  recoveryTimer = null;
-  refreshFailures = 0;
-  recoveryFailures = 0;
+  invalidateSession();
   localStorage.removeItem(STORAGE_KEY);
-  useAuthStore.setState({ user: null, accessToken: null, status: 'guest' });
+  useAuthStore.setState({ user: null, accessToken: null, status: 'guest', sessionRecovering: false });
   void import('@/lib/session-reset').then((m) => m.resetUserSessionState());
 }
 
@@ -166,15 +199,22 @@ function scheduleSessionRecovery(err: unknown, scope: RateScope = 'api') {
   if (recoveryTimer || typeof window === 'undefined') return;
   recoveryFailures += 1;
   const delay = retryDelayMs(recoveryFailures, err, scope);
+  const epoch = sessionEpoch;
   recoveryTimer = setTimeout(() => {
     recoveryTimer = null;
-    if (!loadStored() || useAuthStore.getState().user) return;
+    if (epoch !== sessionEpoch) return; // se cerró la sesión / entró otra cuenta mientras esperaba
+    if (!loadStored() || useAuthStore.getState().user) {
+      // Nada que recuperar (sesión cerrada en otra pestaña o ya hidratada): la recuperación no puede quedar «activa» para siempre.
+      if (useAuthStore.getState().sessionRecovering && !useAuthStore.getState().user) useAuthStore.setState({ sessionRecovering: false });
+      return;
+    }
     void hydrate();
   }, delay);
 }
 
 /** Hidrata la sesión guardada: renueva el token si está por vencer y carga GET /users/me. Nunca cierra la sesión por errores transitorios. */
 async function hydrate(): Promise<LoadMeOutcome> {
+  const epoch = sessionEpoch;
   const stored = loadStored();
   if (!stored) return 'unauthorized';
   useAuthStore.setState({ accessToken: stored.accessToken });
@@ -182,17 +222,20 @@ async function hydrate(): Promise<LoadMeOutcome> {
     try {
       await clientRefresh();
     } catch (err) {
+      if (epoch !== sessionEpoch) return 'unauthorized'; // cerraron sesión / cambió la cuenta mientras tanto
       if (!isTransient(classifyError(err)) || stored.expiresAt <= Date.now()) {
         forceGuest();
         return 'unauthorized';
       }
-      // 429 / red / 5xx: la sesión sigue guardada; la UI arranca como invitado y se reintenta con backoff.
-      if (!useAuthStore.getState().user) useAuthStore.setState({ status: 'guest' });
+      // 429 / red / 5xx: la sesión sigue guardada y se reintenta con backoff; NO se presenta como invitado (sessionRecovering).
+      if (!useAuthStore.getState().user) useAuthStore.setState({ status: 'guest', sessionRecovering: true });
       scheduleSessionRecovery(err, 'refresh');
       return 'transient';
     }
+    if (epoch !== sessionEpoch) return 'unauthorized';
   }
   const outcome = await useAuthStore.getState().loadMe();
+  if (epoch !== sessionEpoch) return outcome;
   if (outcome === 'ok') {
     recoveryFailures = 0;
     armFromStored();
@@ -205,7 +248,7 @@ async function hydrate(): Promise<LoadMeOutcome> {
 function bindStoreToClient() {
   bindAuthCallbacks({
     getAccessToken: () => useAuthStore.getState().accessToken ?? loadStored()?.accessToken ?? null,
-    getRefreshToken: () => loadStored()?.refreshToken ?? null,
+    getRefreshToken: () => (isClosing() ? null : loadStored()?.refreshToken ?? null),
     onRefreshed: (s) => {
       refreshFailures = 0;
       persistSession({
@@ -222,28 +265,107 @@ function bindStoreToClient() {
   });
 }
 
-/** Varias pestañas: cuando otra renueva los tokens, esta adopta el token nuevo y reagenda SU timer (no pide otro refresh). */
+/** `sub` (id de la cuenta) del access token, o null si no es un JWT legible. Distingue «otra pestaña renovó MI sesión» de «otra pestaña entró con
+ *  otra cuenta» sin pedir nada al servidor. */
+function jwtSubject(token: string | null | undefined): string | null {
+  if (!token) return null;
+  try {
+    const part = token.split('.')[1];
+    if (!part) return null;
+    const b64 = part.replace(/-/g, '+').replace(/_/g, '/');
+    const p = JSON.parse(atob(b64 + '='.repeat((4 - (b64.length % 4)) % 4))) as { sub?: unknown };
+    return typeof p.sub === 'string' && p.sub ? p.sub : null;
+  } catch {
+    return null;
+  }
+}
+
+/** ¿Esta pestaña tiene (o está recuperando) una sesión propia que otra pestaña pudo cerrar o reemplazar? */
+function hasLocalSession(): boolean {
+  const st = useAuthStore.getState();
+  return Boolean(st.user) || st.status === 'authenticated' || st.sessionRecovering || st.accessToken !== null;
+}
+
+/**
+ * Otra pestaña cerró la sesión (o un rechazo definitivo la cerró allá): esta pestaña invalida la suya SIN escribir en storage ni llamar al
+ * servidor (ya lo hizo la otra: nada de eventos de vuelta ni logouts duplicados). La época descarta cualquier respuesta tardía (refresh,
+ * perfil, hidratación), se detienen los temporizadores y se limpia todo el estado de usuario (queries, reproductor, imágenes autenticadas).
+ */
+function signOutFromOtherTab() {
+  invalidateSession();
+  useAuthStore.setState({ user: null, accessToken: null, status: 'guest', sessionRecovering: false });
+  void import('@/lib/session-reset').then((m) => m.resetUserSessionState());
+}
+
+/**
+ * Otra pestaña entró con OTRA cuenta: nada de la cuenta anterior sobrevive aquí. Se invalida la época (las respuestas de la cuenta vieja se
+ * descartan), se limpia todo el estado de usuario y se hidrata la sesión nueva que dejó la otra pestaña en storage. Mientras tanto la UI queda en
+ * `sessionRecovering` (carga), no como invitado ni con datos de la cuenta anterior.
+ */
+async function switchToOtherTabAccount() {
+  invalidateSession();
+  const epoch = sessionEpoch;
+  useAuthStore.setState({ user: null, accessToken: null, status: 'guest', sessionRecovering: true });
+  const { resetUserSessionState } = await import('@/lib/session-reset');
+  await resetUserSessionState();
+  if (epoch !== sessionEpoch) return; // otro cambio (logout, otro login) se adelantó
+  if (!loadStored()) {
+    useAuthStore.setState({ sessionRecovering: false });
+    return;
+  }
+  await hydrate();
+}
+
+/** Cambios de `melodya.session` hechos por OTRA pestaña (el evento `storage` nunca se dispara en la que escribe: no hay ciclos). */
+function onStorageChange(e: StorageEvent) {
+  if (e.key !== null && e.key !== STORAGE_KEY) return; // key === null: localStorage.clear()
+  if (isClosing()) return; // este logout ya está en curso aquí
+  const s = loadStored();
+  const state = useAuthStore.getState();
+
+  // Sesión borrada en otra pestaña (logout, rechazo definitivo, storage limpiado): se cierra la local sin duplicar el logout.
+  if (!s) {
+    if (hasLocalSession()) signOutFromOtherTab();
+    return;
+  }
+
+  // Sesión nueva o renovada. Sin sesión local (invitado) no hay nada que sincronizar.
+  if (!hasLocalSession() || s.accessToken === state.accessToken) return;
+
+  // ¿Es otra cuenta? Se compara el `sub` del token guardado con el de la cuenta de esta pestaña (usuario cargado o su access token).
+  const mine = state.user?.id ?? jwtSubject(state.accessToken);
+  const theirs = jwtSubject(s.accessToken);
+  if (mine && theirs && mine !== theirs) {
+    void switchToOtherTabAccount();
+    return;
+  }
+
+  // Misma cuenta: otra pestaña renovó los tokens de ESTA sesión. Se adopta el token nuevo y se reagenda (sin pedir otro refresh ni cerrar nada).
+  if (state.status !== 'authenticated') return;
+  useAuthStore.setState({ accessToken: s.accessToken });
+  refreshFailures = 0;
+  scheduleProactiveRefresh(s.accessToken, s.accessExpiresAt);
+}
+
+/** Varias pestañas: cierre de sesión, cambio de cuenta y renovación de tokens (ver `onStorageChange`). */
 function bindStorageSync() {
   if (storageSyncBound || typeof window === 'undefined' || typeof window.addEventListener !== 'function') return;
   storageSyncBound = true;
-  window.addEventListener('storage', (e: StorageEvent) => {
-    if (e.key !== STORAGE_KEY || !e.newValue) return;
-    const s = loadStored();
-    const state = useAuthStore.getState();
-    if (!s || state.status !== 'authenticated' || s.accessToken === state.accessToken) return;
-    useAuthStore.setState({ accessToken: s.accessToken });
-    refreshFailures = 0;
-    scheduleProactiveRefresh(s.accessToken, s.accessExpiresAt);
-  });
+  window.addEventListener('storage', onStorageChange);
 }
 
 /** Login/registro comparten el posproceso: reset del estado del usuario
  *  anterior (caché, player, borradores), guardado de tokens e hidratación. */
 async function startSession(session: { accessToken: string; refreshToken: string }) {
+  /* Sesión NUEVA: cualquier reintento / hidratación / refresh de la anterior (otra cuenta) queda invalidado. */
+  invalidateSession();
+  useAuthStore.setState({ sessionRecovering: false });
+  const epoch = sessionEpoch;
   /* Si había una sesión de OTRA cuenta (o datos de invitado) en caché, fuera:
    * el usuario que entra arranca desde cero, sin ver nada del anterior. */
   const { resetUserSessionState } = await import('@/lib/session-reset');
   await resetUserSessionState();
+  if (epoch !== sessionEpoch) return; // otro login / un logout se adelantó mientras se reseteaba el estado: esta sesión ya no es la vigente
 
   persistSession({
     accessToken: session.accessToken,
@@ -255,7 +377,7 @@ async function startSession(session: { accessToken: string; refreshToken: string
   bindStoreToClient();
   bindStorageSync();
   const outcome = await useAuthStore.getState().loadMe();
-  if (outcome === 'ok') armFromStored();
+  if (outcome === 'ok' && epoch === sessionEpoch) armFromStored();
 }
 
 export const useAuthStore = create<AuthState>((set, get) => ({
@@ -263,6 +385,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   accessToken: null,
   status: 'idle',
   bootstrapPromise: null,
+  sessionRecovering: false,
 
   login: async (email, password) => {
     const session = await authApi.login({ email, password });
@@ -276,18 +399,33 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
   logout: async (all = false) => {
     const stored = loadStored();
+    /* Se invalida YA, sin esperar al servidor: un perfil o un refresh en vuelo no puede resucitar la sesión que se está cerrando y ningún
+     * temporizador (refresh / recuperación) puede dispararse durante la espera. */
+    invalidateSession();
+    const epoch = sessionEpoch;
+    closingEpoch = epoch;
+    set({ sessionRecovering: false });
     try {
       if (all) await authApi.logoutAll();
       else await authApi.logout(stored?.refreshToken);
     } catch {
       /* logout best-effort */
     }
-    localStorage.removeItem(STORAGE_KEY);
-    if (refreshTimer) clearTimeout(refreshTimer);
-    if (recoveryTimer) clearTimeout(recoveryTimer);
-    refreshTimer = null;
-    recoveryTimer = null;
-    set({ user: null, accessToken: null, status: 'guest' });
+    closingEpoch = null;
+    if (epoch !== sessionEpoch) {
+      /* Mientras esperaba al servidor, otra cosa tomó el control de la sesión (otro login —aquí o desde otra pestaña—, un rechazo definitivo):
+       * el estado y el storage ya son de esa sesión y NO se tocan (borrarían los tokens de la cuenta nueva). */
+      if (!loadStored() && !useAuthStore.getState().user && typeof window !== 'undefined') navigate('/');
+      return;
+    }
+    /* Otra pestaña pudo entrar con OTRA cuenta mientras esperaba al servidor: su sesión en storage no se borra (solo se cierra la de aquí).
+     * Si es la MISMA cuenta (p. ej. otra pestaña rotó los tokens de la sesión que se cierra) sí se borra, para que el logout no quede a medias. */
+    const nowStored = loadStored();
+    const closedSub = jwtSubject(stored?.accessToken);
+    const otherAccountNow = Boolean(nowStored) && Boolean(closedSub) && jwtSubject(nowStored?.accessToken) !== null && jwtSubject(nowStored?.accessToken) !== closedSub;
+    if (!otherAccountNow) localStorage.removeItem(STORAGE_KEY);
+    clearSessionTimers();
+    set({ user: null, accessToken: null, status: 'guest', sessionRecovering: false });
 
     /* Todo el estado del usuario (caché de queries, reproductor, historial,
      * borrador del asistente, object URLs) se limpia: el siguiente usuario del
@@ -316,10 +454,13 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       armRefreshTimer(wait + RETRY_AFTER_MARGIN_MS);
       return;
     }
+    const epoch = sessionEpoch;
     try {
       const newAccessToken = await clientRefresh();
+      if (epoch !== sessionEpoch) return; // cerraron sesión / cambió la cuenta mientras renovaba
       set({ accessToken: newAccessToken });
     } catch (err) {
+      if (epoch !== sessionEpoch) return;
       handleRefreshFailure(err);
     }
   },
@@ -348,17 +489,20 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   },
 
   loadMe: async () => {
+    const epoch = sessionEpoch;
     try {
       const me = await profileApi.me();
-      set({ user: me, status: 'authenticated' });
+      if (epoch !== sessionEpoch) return 'unauthorized'; // la sesión cambió mientras volaba: el perfil de la anterior NO se aplica
+      set({ user: me, status: 'authenticated', sessionRecovering: false });
       return 'ok';
     } catch (err) {
+      if (epoch !== sessionEpoch) return 'unauthorized';
       const kind = classifyError(err);
       if (isTransient(kind)) {
-        /* 429 / red / 5xx: NO es una sesión inválida. Si ya había un usuario cargado se conserva tal cual; si no, la UI sigue como
-         * invitado mientras se reintenta con backoff (los tokens quedan guardados). */
+        /* 429 / red / 5xx: NO es una sesión inválida. Si ya había un usuario cargado se conserva tal cual; si no, se reintenta con backoff
+         * (los tokens quedan guardados) y mientras tanto la UI NO lo presenta como invitado (sessionRecovering). */
         if (!get().user) {
-          set({ status: 'guest' });
+          set({ status: 'guest', sessionRecovering: Boolean(loadStored()) });
           scheduleSessionRecovery(err);
         }
         return 'transient';
@@ -367,7 +511,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         forceGuest(); // cuenta no activa: reintentar no ayuda
         return 'unauthorized';
       }
-      set({ user: null, status: 'guest' });
+      set({ user: null, status: 'guest', sessionRecovering: false });
       return 'unauthorized';
     }
   },

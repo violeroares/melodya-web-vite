@@ -142,7 +142,10 @@ export function RootLayout() {
 function RequireAuth() {
   const status = useAuthStore((s) => s.status);
   const user = useAuthStore((s) => s.user);
-  if (status === 'idle' || status === 'loading') {
+  /* Sesión guardada que se está recuperando tras un error temporal (429 / red / 5xx): mismo estado de carga que el arranque, no el aviso de
+     «iniciá sesión». No habilita nada privado: sin perfil validado `user` sigue en null. */
+  const recovering = useAuthStore((s) => s.sessionRecovering);
+  if (status === 'idle' || status === 'loading' || recovering) {
     return (
       <div className="flex flex-1 items-center justify-center" aria-busy="true">
         <div className="flex flex-col items-center gap-3">
