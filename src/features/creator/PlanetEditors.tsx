@@ -342,10 +342,10 @@ export function CompositionEditor({ song, patch, onOpenStudio, issues, onApplySu
       {c.mode === 'idea' && (
         <fieldset className="space-y-2">
           <legend className="mb-3 text-sm font-semibold">Temática <span className="font-normal text-muted-foreground">(opcional: ayuda a Melodya a escribir la letra)</span></legend>
-          {/* Una sola fila: los seis chips se reparten todo el ancho y, si en algún tamaño no entran, la fila se desplaza hacia el costado (sin cortar palabras) */}
-          <div className="scrollbar-none -mx-1 flex flex-nowrap gap-1 overflow-x-auto px-1 pb-0.5">
+          {/* Los chips se reparten el ancho y, si no entran en una fila, bajan a la siguiente (sin desplazarse hacia el costado) */}
+          <div className="flex flex-wrap gap-1.5">
             {MOODS.map((m) => (
-              <Chip key={m.id} active={c.mood === m.id} onClick={() => patch({ mood: c.mood === m.id ? '' : m.id })} className="h-9 flex-1 justify-center px-2 text-xs">
+              <Chip key={m.id} active={c.mood === m.id} onClick={() => patch({ mood: c.mood === m.id ? '' : m.id })} className="h-9 flex-auto justify-center px-3 text-xs">
                 {m.label}
               </Chip>
             ))}
