@@ -272,6 +272,35 @@ export function hasStyleInputs(s: SongState): boolean {
   return s.style.genres.length > 0 || s.style.description.trim().length > 0;
 }
 
+/**
+ * ¿Composición o Estilo están SIN configurar? Es lo que decide si su planeta se dibuja punteado: depende sólo de la configuración actual,
+ * nunca de si alguna vez se pulsó «Listo».
+ *  • Composición: vacía si no hay idea, letra ni título y el modo no es «instrumental» (elegir instrumental ya es configurarla).
+ *    `mood` y `moodCustom` NO cuentan: nunca fueron condición de completado y siguen sin serlo.
+ *  • Estilo: vacío si no hay géneros ni descripción (`hasStyleInputs`).
+ * Los demás planetas no tienen un «vacío ⇒ punteado» (sólo quedan punteados al agregarlos con «+» hasta su «Listo»): devuelven false.
+ */
+export function isBasePlanetEmpty(s: SongState, id: PlanetId): boolean {
+  if (id === 'composition') {
+    const c = s.composition;
+    return !c.idea.trim() && !c.lyrics.trim() && !c.title.trim() && c.mode !== 'instrumental';
+  }
+  if (id === 'style') return !hasStyleInputs(s);
+  return false;
+}
+
+/** Cómo estaba un planeta base al abrir su editor: `empty` es si no tenía configuración en ese momento. */
+export type BaseOpened = { id: PlanetId; empty: boolean };
+
+/**
+ * Planetas base (Composición y Estilo) que se dibujan punteados. Se deriva de la configuración actual; la única excepción es el planeta
+ * ABIERTO en edición, que conserva el aspecto que tenía al abrirse (punteado si estaba vacío, relleno si no) hasta cerrarse, y se recalcula
+ * entonces. No guarda nada entre aperturas: «Listo» sólo cierra.
+ */
+export function pendingBasePlanets(s: SongState, opened: BaseOpened | null, openPlanet: PlanetId | null): PlanetId[] {
+  return (['composition', 'style'] as PlanetId[]).filter((id) => (opened?.id === id && openPlanet === id ? opened.empty : isBasePlanetEmpty(s, id)));
+}
+
 /* ───────── géneros y presupuesto del `style` ───────── */
 
 const fold = (s: string) => s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
