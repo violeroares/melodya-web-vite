@@ -82,7 +82,9 @@ test('las acciones de borrado ya no prometen un borrado: se llaman «Enviar a la
     detail: 'src/features/song/SongDetailView.tsx',
   };
   for (const [name, path] of Object.entries(files)) {
-    const src = read(path).replace(/Eliminar (esta )?clonaci[oó]n[^\n]*/g, '').replace(/Eliminar comentario[^\n]*/g, '');
+    // Quedan fuera los borrados que SÍ son definitivos y lo dicen con razón: clonaciones fallidas y comentarios (su confirmación avisa que no se
+    // puede deshacer). Esta prueba solo exige que las canciones, letras, proyectos, etc. no prometan un borrado irreversible.
+    const src = read(path).replace(/Eliminar (esta )?clonaci[oó]n[^\n]*/g, '').replace(/Eliminar comentario[^\n]*/g, '').replace(/Se borra el comentario[^\n]*/g, '');
     assert.ok(src.includes('Enviar a la Papelera'), `${name}: usa «Enviar a la Papelera»`);
     assert.ok(!/No se puede deshacer|no se puede deshacer/.test(src), `${name}: ya no dice que no se puede deshacer`);
     assert.ok(!/<Trash2[^>]*\/> Eliminar\b/.test(src), `${name}: el ítem del menú ya no dice «Eliminar»`);
