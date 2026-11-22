@@ -20,6 +20,8 @@ import { useRoute } from '@/lib/router';
 import { cn } from '@/lib/utils';
 import { generationFailureMessage } from '@/lib/generation-failure';
 import { usePlayerStore } from '@/stores/player';
+import { useAuthStore } from '@/stores/auth';
+import { isPublicLanding } from '@/lib/public-landing';
 
 const COLLAPSE_KEY = 'melodya.sidebar.collapsed';
 
@@ -30,6 +32,12 @@ export function AppShell({ children, withFooter = true }: { children: React.Reac
   /* ¿Hay un tema cargado en el player? El PlayerBar es fijo y cubre el pie
      del contenido: solo reservamos ese aire cuando realmente está visible. */
   const playerActive = usePlayerStore((s) => !!s.track);
+  /* Landing pública (raíz «/» de un invitado): ocupa toda la pantalla con su propio header y footer. Sólo ahí se oculta la navegación de la
+     app; el reproductor sigue montado para escuchar las canciones de la comunidad. Mismo predicado que usa la ruta «/» para elegir la vista. */
+  const user = useAuthStore((s) => s.user);
+  const status = useAuthStore((s) => s.status);
+  const sessionRecovering = useAuthStore((s) => s.sessionRecovering);
+  const publicLanding = isPublicLanding({ path, user, status, sessionRecovering });
 
   useEffect(() => {
     // Sincroniza con un sistema externo (localStorage) al montar.
@@ -121,13 +129,16 @@ export function AppShell({ children, withFooter = true }: { children: React.Reac
       >
         Saltar al contenido
       </button>
-      <Sidebar collapsed={collapsed} onToggle={toggleCollapse} />
+      {!publicLanding && <Sidebar collapsed={collapsed} onToggle={toggleCollapse} />}
 
       <div className="flex min-w-0 flex-1 flex-col">
-        <AnnouncementBar />
-        <Header />
+        {!publicLanding && <AnnouncementBar />}
+        {!publicLanding && <Header />}
 
-        <main id="contenido" tabIndex={-1} className="@container flex flex-1 flex-col focus:outline-none">
+        <main id="contenido" tabIndex={-1} className={cn('flex flex-1 flex-col focus:outline-none', !publicLanding && '@container')}>
+          {publicLanding ? (
+            children
+          ) : (
           <div
             className={cn(
               'mx-auto flex w-full max-w-7xl flex-1 flex-col px-4 pt-6 sm:px-6',
@@ -142,9 +153,10 @@ export function AppShell({ children, withFooter = true }: { children: React.Reac
           >
             {children}
           </div>
+          )}
         </main>
 
-        {withFooter && (
+        {withFooter && !publicLanding && (
           <footer className="mt-auto border-t border-border/70 bg-surface/50">
             <div className="mx-auto flex max-w-7xl flex-col gap-4 px-4 py-5 pb-32 sm:px-6 md:pb-5">
               <BannerSlot position="FOOTER" />
@@ -159,9 +171,9 @@ export function AppShell({ children, withFooter = true }: { children: React.Reac
         )}
       </div>
 
-      <BottomNav />
-      <PlayerBar />
-      <CommandPalette />
+      {!publicLanding && <BottomNav />}
+      <PlayerBar withBottomNav={!publicLanding} />
+      {!publicLanding && <CommandPalette />}
       {/* Aviso de upgrade común a toda la app (funcionalidades fuera del plan) */}
       <UpgradeDialog />
     </div>

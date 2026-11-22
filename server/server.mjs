@@ -39,6 +39,8 @@ const TYPES = {
   '.jpg': 'image/jpeg',
   '.webp': 'image/webp',
   '.ico': 'image/x-icon',
+  '.mp4': 'video/mp4',
+  '.mp3': 'audio/mpeg',
   '.woff': 'font/woff',
   '.woff2': 'font/woff2',
   '.txt': 'text/plain; charset=utf-8',
@@ -51,16 +53,46 @@ function requestOrigin(req) {
   return `${proto}://${req.headers.host ?? `localhost:${port}`}`;
 }
 
-function sendStatic(res, filePath, immutable) {
+/** «bytes=a-b» / «bytes=a-» / «bytes=-n» → {start,end} o null (sin rango válido). Un solo rango: es lo que piden los navegadores para audio y video. */
+function parseRange(header, size) {
+  const m = /^bytes=(\d*)-(\d*)$/.exec(header ?? '');
+  if (!m || (m[1] === '' && m[2] === '')) return null;
+  const start = m[1] === '' ? Math.max(0, size - Number(m[2])) : Number(m[1]);
+  const end = m[1] === '' || m[2] === '' ? size - 1 : Math.min(Number(m[2]), size - 1);
+  if (!Number.isFinite(start) || start < 0 || start > end || start >= size) return { invalid: true };
+  return { start, end };
+}
+
+function sendStatic(req, res, filePath, immutable) {
   // El archivo de iOS Universal Links no tiene extensión y DEBE servirse como JSON, sin redirecciones.
   const type = path.basename(filePath) === 'apple-app-site-association' ? TYPES['.json'] : (TYPES[path.extname(filePath).toLowerCase()] ?? 'application/octet-stream');
-  const body = fs.readFileSync(filePath);
-  res.writeHead(200, {
+  const headers = {
     'content-type': type,
-    'content-length': body.length,
     'cache-control': immutable ? 'public, max-age=31536000, immutable' : 'public, max-age=300',
     'x-content-type-options': 'nosniff',
-  });
+    'accept-ranges': 'bytes',
+  };
+  // Audio y video (landing pública) necesitan peticiones por rango: Safari no los reproduce sin 206, y sin ellos no se puede avanzar.
+  if (type.startsWith('video/') || type.startsWith('audio/')) {
+    const size = fs.statSync(filePath).size;
+    const range = parseRange(req.headers.range, size);
+    if (range?.invalid) {
+      res.writeHead(416, { ...headers, 'content-range': `bytes */${size}` }).end();
+      return;
+    }
+    if (range) {
+      res.writeHead(206, { ...headers, 'content-range': `bytes ${range.start}-${range.end}/${size}`, 'content-length': range.end - range.start + 1 });
+      if (req.method === 'HEAD') return void res.end();
+      fs.createReadStream(filePath, { start: range.start, end: range.end }).pipe(res);
+      return;
+    }
+    res.writeHead(200, { ...headers, 'content-length': size });
+    if (req.method === 'HEAD') return void res.end();
+    fs.createReadStream(filePath).pipe(res);
+    return;
+  }
+  const body = fs.readFileSync(filePath);
+  res.writeHead(200, { ...headers, 'content-length': body.length });
   res.end(body);
 }
 
@@ -77,7 +109,7 @@ const server = http.createServer(async (req, res) => {
     const rel = decodeURIComponent(pathname).replace(/^\/+/, '');
     const filePath = path.resolve(dist, rel);
     if (rel && filePath.startsWith(dist + path.sep) && fs.existsSync(filePath) && fs.statSync(filePath).isFile() && rel !== 'index.html') {
-      sendStatic(res, filePath, rel.startsWith('assets/'));
+      sendStatic(req, res, filePath, rel.startsWith('assets/'));
       return;
     }
     // Un archivo con extensión que no existe es un 404 real (no devolvemos HTML en su lugar).

@@ -1,0 +1,356 @@
+/* Melodya landing — visual system 2.0.
+   All colors, type, radii and sizes come from ./tokens.css (copy of docs/design-V2/design-system/tokens.css).
+   Only layout constants that tokens don't cover are defined here. */
+.landing-root{--header-h:64px;--gutter:16px;--maxw:1840px;--section-y:clamp(72px,10vw,128px)}
+@media(min-width:600px){.landing-root{--gutter:28px}}
+@media(min-width:900px){.landing-root{--header-h:76px;--gutter:40px}}
+.landing-root{margin:0;background:var(--m-background);color:var(--m-foreground);font:var(--m-type-body);overflow-x:clip}
+.landing-root a{color:inherit;text-decoration:none}
+.landing-root em,.landing-root .orange{font-style:normal;color:var(--m-accent)}
+.landing-root h1,.landing-root h2,.landing-root h3,.landing-root p{margin:0}
+.landing-root :focus-visible{outline:3px solid var(--m-selected);outline-offset:3px;border-radius:6px}
+.landing-root button{font:inherit;color:inherit}
+
+/* Quiet static star layer (dark theme only). */
+.landing-root::before{content:"";position:fixed;inset:0;z-index:-1;pointer-events:none;opacity:.5;
+  background-image:radial-gradient(circle at 8% 16%,var(--m-foreground) 0 1px,transparent 1.5px),radial-gradient(circle at 76% 10%,var(--m-accent-soft) 0 1px,transparent 1.5px),radial-gradient(circle at 28% 76%,var(--m-foreground) 0 1px,transparent 1.5px),radial-gradient(circle at 92% 68%,var(--m-accent-soft) 0 1px,transparent 1.5px),radial-gradient(circle at 54% 42%,var(--m-element-sound) 0 1px,transparent 1.5px);
+  background-size:300px 280px,420px 360px,480px 440px,340px 400px,560px 500px}
+html:not(.dark) .landing-root::before{display:none}
+
+.landing-main,.landing-root .nav{width:100%;max-width:var(--maxw);margin:0 auto;padding-left:var(--gutter);padding-right:var(--gutter)}
+.landing-main{position:relative}
+
+/* ---------- Header (sticky) ---------- */
+.landing-root .site-header{position:sticky;top:0;z-index:50;background:color-mix(in srgb,var(--m-background) 86%,transparent);-webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px);border-bottom:1px solid transparent;transition:border-color .3s ease,background-color .3s ease}
+.landing-root .site-header.is-scrolled{border-bottom-color:var(--m-border);background:color-mix(in srgb,var(--m-background) 94%,transparent)}
+.landing-root .nav{height:var(--header-h);display:flex;align-items:center;justify-content:space-between;gap:16px}
+.landing-root .brand{display:inline-flex;align-items:center;min-height:var(--m-size-touch-min)}
+.landing-root .brand img{display:block;height:22px;width:auto}
+.landing-root .nav-links{display:none;gap:32px;font-size:14px;font-weight:600}
+.landing-root .nav-links a{padding:10px 2px;transition:color .2s ease}
+.landing-root .nav-actions{display:flex;align-items:center;gap:10px}
+.landing-root .login{display:none;align-items:center;gap:8px;min-height:var(--m-size-touch-min);border:1.5px solid var(--m-line);border-radius:999px;padding:0 18px;font-size:14px;font-weight:700;transition:background-color .2s ease,color .2s ease,border-color .2s ease}
+.landing-root .icon-button{display:inline-grid;place-items:center;width:var(--m-size-icon-button);height:var(--m-size-icon-button);border:1.5px solid var(--m-border);border-radius:50%;background:transparent;cursor:pointer;transition:background-color .2s ease,border-color .2s ease,transform .2s ease}
+.landing-root .icon-button:active,.landing-root .button:active{transform:scale(.96)}
+.landing-root .nav-theme{display:none}
+.landing-root .mobile-menu{display:grid;gap:4px;padding:8px var(--gutter) 20px;max-height:calc(100dvh - var(--header-h));overflow-y:auto;background:var(--m-background);border-bottom:1px solid var(--m-border)}
+.landing-root .mobile-menu[hidden]{display:none}
+.landing-root .mobile-menu>a:not(.button){display:flex;align-items:center;min-height:52px;font:var(--m-type-row-title);border-bottom:1px solid var(--m-separator)}
+.landing-root .mobile-menu .button{margin-top:14px}
+.landing-root .mobile-theme{display:flex;align-items:center;justify-content:center;gap:10px;min-height:var(--m-size-touch-min);margin-top:6px;background:transparent;border:0;cursor:pointer;color:var(--m-foreground-secondary);font-weight:600}
+@media(min-width:900px){.landing-root .nav-links,.landing-root .login{display:flex}.landing-root .nav-theme{display:inline-grid}.landing-root .menu-toggle,.landing-root .mobile-menu,.landing-root .mobile-menu[hidden]{display:none}}
+@media(hover:hover){.landing-root .nav-links a:hover,.landing-root .text-link:hover{color:var(--m-accent)}.landing-root .login:hover{background:var(--m-foreground);color:var(--m-background);border-color:var(--m-foreground)}.landing-root .icon-button:hover{border-color:var(--m-foreground)}}
+
+/* ---------- Shared type & controls ---------- */
+.landing-root .eyebrow{font:var(--m-type-label);letter-spacing:var(--m-track-label);color:var(--m-label);margin-bottom:20px}
+.landing-root h1,.landing-root h2,.landing-root h3{font-family:var(--m-font-display);font-weight:700;letter-spacing:-.03em}
+.landing-root .section-intro{max-width:34rem;color:var(--m-foreground-secondary);font-size:clamp(16px,1.4vw,18px);line-height:1.55;margin-top:22px}
+.landing-root .button{display:inline-flex;align-items:center;justify-content:center;gap:12px;min-height:var(--m-size-pill-height);padding:0 28px;border-radius:999px;font:var(--m-type-button);letter-spacing:var(--m-track-button);text-align:center;transition:transform .2s ease,background-color .2s ease,color .2s ease,border-color .2s ease,box-shadow .2s ease}
+.landing-root .button.primary{background:var(--m-accent);color:var(--m-on-accent)}
+.landing-root .button.outline{border:1.5px solid var(--m-line)}
+.landing-root .text-link{display:inline-flex;align-items:center;gap:8px;min-height:var(--m-size-touch-min);font-size:15px;font-weight:700;border-bottom:1.5px solid currentColor;transition:color .2s ease}
+@media(hover:hover){.landing-root .button:hover{transform:translateY(-2px)}.landing-root .button.primary:hover{box-shadow:0 10px 24px -10px var(--m-accent)}.landing-root .button.outline:hover{border-color:var(--m-accent);color:var(--m-accent)}}
+
+/* ---------- Hero ---------- */
+.landing-root .hero{position:relative;display:grid;grid-template-columns:minmax(0,1fr);align-items:center;gap:36px;width:100vw;margin-left:calc(50% - 50vw);padding:40px max(var(--gutter),calc((100vw - var(--maxw)) / 2 + var(--gutter))) 64px;overflow:clip}
+.landing-root .hero-copy{position:relative;z-index:2;min-width:0}
+.landing-root .iso-slot{width:100%;aspect-ratio:593/285}
+.landing-root .iso-defs{position:absolute;width:0;height:0}
+.landing-root .iso-media{position:absolute;inset:0;z-index:1;clip-path:url(#iso-clip);animation:lnd-solar-in 1s cubic-bezier(.32,.72,0,1) .15s backwards}
+.landing-root .iso-media-inner{position:absolute;inset:0;will-change:transform}
+/* Video grading per theme: --iso-filter tunes the footage, --iso-tint is a brand-colored wash over it. */
+.landing-root{--iso-filter:brightness(.9) contrast(1.1) saturate(1.1);--iso-tint:radial-gradient(circle at 50% 45%,transparent 52%,rgba(19,28,51,.5) 100%),linear-gradient(135deg,rgba(255,107,77,.1),rgba(19,28,51,.16))}
+html:not(.dark) .landing-root{--iso-filter:brightness(1.1) contrast(.98) saturate(1.04);--iso-tint:radial-gradient(circle at 50% 45%,transparent 58%,rgba(243,229,226,.32) 100%),linear-gradient(135deg,rgba(255,214,200,.18),rgba(243,229,226,.1))}
+.landing-root .iso-media-inner::after{content:"";position:absolute;inset:0;pointer-events:none;background:var(--iso-tint)}
+.landing-root .iso-canvas,.landing-root .iso-video{filter:var(--iso-filter)}
+.landing-root .iso-canvas,.landing-root .iso-video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block}
+.landing-root .hero h1{font-size:clamp(2.25rem,11.4vw,3.4rem);line-height:1.02;letter-spacing:-.035em}
+.landing-root .headline-line{display:inline-block;white-space:nowrap}
+.landing-root .hero h1 em{color:var(--m-foreground)}
+.landing-root .rotating-word{display:inline-block;color:var(--m-accent)}
+.landing-root .lead{max-width:34rem;color:var(--m-foreground-secondary);font:var(--m-type-body);font-size:clamp(16px,1.6vw,20px);line-height:1.55;margin:24px 0 28px}
+.landing-root .actions{display:flex;flex-direction:column;align-items:stretch;gap:8px}
+.landing-root .actions .button{width:100%}
+.landing-root .actions .text-link{align-self:center}
+.landing-root .hero-note{font-size:13px;color:var(--m-foreground-secondary);margin-top:18px;max-width:30rem}
+@media(min-width:560px){.landing-root .hero h1{font-size:clamp(3.4rem,9vw,4.4rem)}.landing-root .actions{flex-direction:row;align-items:center;flex-wrap:wrap;gap:12px 28px}.landing-root .actions .button{width:auto}.landing-root .actions .text-link{align-self:auto}}
+@media(min-width:900px){.landing-root .hero{grid-template-columns:minmax(0,1.05fr) minmax(0,.95fr);gap:48px;min-height:calc(100svh - var(--header-h));padding-top:32px;padding-bottom:56px}.landing-root .iso-slot{aspect-ratio:auto;height:100%}.landing-root .hero h1{font-size:clamp(4rem,6.4vw,6.6rem)}}
+
+/* ---------- Solar system ---------- */
+.landing-root .solar-wrap{display:flex;flex-direction:column;align-items:center;gap:18px;min-width:0}
+.landing-root .solar{--u:calc(100cqw / 400);overflow:clip;overflow-clip-margin:14px;position:relative;container-type:inline-size;width:min(100%,520px);aspect-ratio:1;color:var(--m-foreground)}
+.landing-root .solar-deco{position:absolute;inset:0;width:100%;height:100%;overflow:visible}
+.landing-root .solar-body{position:absolute;inset:0}
+.landing-root .ring,.landing-root .orbit-spin{position:absolute;left:calc((100% - var(--d)) / 2);top:calc((100% - var(--d)) / 2);width:var(--d);aspect-ratio:1;border-radius:50%}
+.landing-root .ring{border:var(--rw) solid var(--rc)}
+.landing-root .core{position:absolute;left:35%;top:35%;width:30%;aspect-ratio:1;display:grid;place-items:center;border-radius:50%;background:var(--m-voice);color:var(--m-on-voice);text-align:center;font:600 calc(var(--u) * 17) / 1.1 var(--m-font-display);letter-spacing:-.01em;box-shadow:0 0 0 calc(var(--u) * 5) var(--m-background),0 0 0 calc(var(--u) * 7.5) var(--m-gold)}
+.landing-root .core::before{content:"";position:absolute;inset:-60%;z-index:-1;border-radius:50%;background:radial-gradient(circle,color-mix(in srgb,var(--m-accent) 26%,transparent) 0,transparent 62%);animation:lnd-halo 6s ease-in-out infinite}
+.landing-root .orbit-spin{animation:lnd-spin var(--dur) linear infinite}
+.landing-root .orbit-spin.rev{animation-direction:reverse}
+.landing-root .arm{position:absolute;inset:0;transform:rotate(var(--a))}
+.landing-root .planet{position:absolute;left:50%;top:0;width:var(--pw);aspect-ratio:1;translate:-50% -50%}
+.landing-root .upright{display:block;width:100%;height:100%;animation:lnd-spin var(--dur) linear infinite reverse}
+.landing-root .rev .upright{animation-direction:normal}
+.landing-root .upright-fix{position:relative;display:block;width:100%;height:100%;transform:rotate(calc(var(--a) * -1))}
+.landing-root .planet-face{display:grid;place-items:center;width:100%;height:100%;border-radius:50%;background:var(--c);box-shadow:0 0 0 calc(var(--u) * 6) color-mix(in srgb,var(--c) 18%,transparent),0 calc(var(--u) * 6) calc(var(--u) * 16) color-mix(in srgb,var(--c) 33%,transparent)}
+.landing-root .planet-face svg{width:52%;height:52%}
+.landing-root .solar[data-live="false"] *{animation-play-state:paused}
+.landing-root .twinkle{animation:lnd-twinkle 5s ease-in-out infinite}
+.landing-root .planet-label{position:absolute;left:calc(100% + 10px);top:50%;transform:translateY(-50%);padding:3px 10px;border:1px solid var(--m-border);border-radius:999px;background:color-mix(in srgb,var(--m-background) 86%,transparent);color:var(--m-foreground);font:var(--m-type-chip);font-size:max(11px,calc(var(--u) * 11));line-height:1.3;white-space:nowrap;pointer-events:none}
+@keyframes lnd-spin{to{transform:rotate(360deg)}}
+@keyframes lnd-halo{50%{transform:scale(1.12);opacity:.7}}
+@keyframes lnd-twinkle{50%{opacity:.25}}
+@keyframes lnd-solar-in{from{opacity:0;transform:scale(.92)}}
+@media(max-width:559px){.landing-root .solar{width:min(74%,290px)}}
+
+/* ---------- Problem / solution ---------- */
+.landing-root .problem{display:grid;grid-template-columns:minmax(0,1fr);gap:28px;padding:var(--section-y) 0;border-top:1px solid var(--m-separator)}
+.landing-root .problem .eyebrow{margin-bottom:0}
+.landing-root .problem h2,.landing-root .features h2,.landing-root .pricing h2,.landing-root .story-copy h2{font-size:clamp(2.4rem,8.4vw,5rem);line-height:1;letter-spacing:-.035em}
+.landing-root .problem h2 span,.landing-root .features h2 span,.landing-root .pricing h2 span{color:var(--m-accent)}
+.landing-root .problem p:not(.eyebrow){max-width:30rem;color:var(--m-foreground-secondary);font-size:clamp(16px,1.4vw,18px);line-height:1.6}
+.landing-root .problem .text-link{width:max-content;max-width:100%}
+/* While the hero is pinned, "La solución" slides up over the full-screen video instead of the video scrolling away above it. */
+.landing-root .problem{position:relative;z-index:3}
+.landing-root .problem::before{content:"";position:absolute;inset:0 calc(50% - 50vw) -2px;z-index:-1;background:var(--m-background)}
+.landing-root[data-hero-pin="on"] .problem{margin-top:calc(-1 * var(--hero-h,calc(100svh - var(--header-h))))}
+/* Solar system on the left, copy on the right; the whole section fits the screen height on desktop. */
+.landing-root .problem-solar{min-width:0;display:flex;justify-content:center}
+.landing-root .problem-solar .solar-wrap{width:100%}
+.landing-root .problem .solar{overflow:visible}
+.landing-root .problem-copy{display:grid;gap:18px;align-content:center;min-width:0}
+.landing-root .problem-copy>div{display:grid;gap:18px;align-content:start}
+@media(min-width:900px){
+  .landing-root .problem{grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:28px 40px;align-items:center;min-height:calc(100svh - var(--header-h));padding:16px 0}
+  .landing-root .problem-copy{gap:clamp(14px,2.6svh,24px)}
+  .landing-root .problem h2{font-size:clamp(2.2rem,min(5vw,8.4svh),5.4rem)}
+  .landing-root .problem .solar{width:min(100%,500px,calc(100svh - var(--header-h) - 110px))}
+  .landing-root .problem p:not(.eyebrow){max-width:none;font-size:clamp(16px,min(1.5vw,2.5svh),21px)}
+}
+
+
+/* ---------- Features ---------- */
+.landing-root .section{padding:var(--section-y) 0}
+.landing-root .features,.landing-root .pricing{border-top:1px solid var(--m-separator)}
+.landing-root .features header,.landing-root .pricing header{margin-bottom:48px}
+.landing-root .feature-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,240px),1fr));gap:clamp(16px,2.4vw,36px)}
+.landing-root .feature{display:flex;flex-direction:column;align-items:center;gap:clamp(12px,2svh,18px);cursor:pointer;-webkit-tap-highlight-color:transparent;color:var(--m-foreground)}
+.landing-root .feature:focus-visible{outline:none}
+.landing-root .feature:focus-visible .feature-half{outline:2px solid var(--m-selected);outline-offset:3px}
+/* A perfect half circle (flat top, no top line), like the "Melodía" / "Ritmo" buttons of "Tu sonido": only icon and title inside. */
+.landing-root .feature-half{width:100%;aspect-ratio:2/1;border:1.5px solid var(--m-line);border-top:0;border-radius:0 0 999px 999px;display:flex;flex-direction:column;align-items:center;container-type:inline-size;text-align:center;transition:transform .18s cubic-bezier(.23,1,.32,1),opacity .18s,background-color .18s,border-color .18s,color .18s}
+.landing-root .feature:active .feature-half{transform:scale(.95);opacity:.85}
+.landing-root .feature[aria-checked="true"] .feature-half{background:var(--m-accent);border-color:var(--m-accent);color:var(--m-brand-navy)}
+.landing-root .feature-icon{display:grid;place-items:center;color:currentColor;margin:clamp(14px,9cqw,40px) 0 clamp(4px,2.4cqw,12px);transition:transform .35s ease}
+.landing-root .feature-icon svg{width:clamp(24px,9cqw,40px);height:clamp(24px,9cqw,40px)}
+.landing-root .feature h3{font:var(--m-type-option-title);font-size:clamp(17px,6.2cqw,27px);line-height:1.15;padding:0 clamp(24px,12cqw,64px)}
+.landing-root .feature[aria-checked="true"] h3{font-weight:700}
+.landing-root .feature p{max-width:30ch;text-align:center;color:var(--m-foreground-secondary);line-height:1.5;font-size:clamp(14px,1.1vw,15.5px)}
+@media(hover:hover){.landing-root .feature:hover .feature-icon{transform:rotate(10deg) scale(1.06)}}
+/* Features: title on two single rows, intro underneath; on desktop the whole section (cards included) fits the screen height. */
+.landing-root .features h2{white-space:nowrap;font-size:min(7.4vw,5rem)}
+.landing-root .features .section-intro{margin:16px 0 0}
+.landing-root .features .section-intro,.landing-root .pricing .section-intro{max-width:none}
+@media(min-width:900px){
+  .landing-root .features{display:flex;flex-direction:column;justify-content:center;min-height:calc(100svh - var(--header-h));padding:24px 0}
+  .landing-root .features h2{font-size:clamp(2rem,min(5.4vw,8.2svh),4.8rem)}
+  .landing-root .features header{margin-bottom:clamp(20px,4svh,36px)}
+  .landing-root .features .section-intro{margin-top:clamp(10px,2svh,18px);font-size:clamp(15px,min(1.4vw,2.3svh),18px)}
+  .landing-root .feature-grid{grid-template-columns:repeat(4,minmax(0,1fr))}
+}
+
+/* ---------- Story: flow cards ---------- */
+.landing-root .story{padding:var(--section-y) 0 calc(var(--section-y) * .6);border-top:1px solid var(--m-separator)}
+.landing-root .story-copy{margin-bottom:48px}
+.landing-root .story-copy h2{margin-bottom:26px}
+.landing-root .story-copy>p:not(.eyebrow){max-width:none;color:var(--m-foreground-secondary);line-height:1.45;font-size:clamp(16px,1.4vw,18px);margin-bottom:2px}
+.landing-root .flow-stack{padding-bottom:24px}
+.landing-root .flow-card{--card-fg:var(--m-foreground);--card-fg2:var(--m-foreground-secondary);position:sticky;top:calc(var(--header-h) + 16px);min-height:clamp(300px,52vw,400px);margin-bottom:48px;padding:clamp(24px,4vw,42px);border-radius:var(--m-radius-list-card);overflow:hidden;color:var(--card-fg);transform-origin:center top;box-shadow:0 16px 36px -18px rgba(0,0,0,.4)}
+.landing-root .flow-card:nth-child(2){top:calc(var(--header-h) + 30px)}.landing-root .flow-card:nth-child(3){top:calc(var(--header-h) + 44px)}
+.landing-root .flow-card:last-child{margin-bottom:0}
+.landing-root .flow-card b{position:relative;z-index:1;font:var(--m-type-label);letter-spacing:var(--m-track-label)}
+.landing-root .flow-card h3{position:relative;z-index:1;max-width:30rem;font-size:clamp(2rem,6vw,3.8rem);line-height:1;margin:clamp(40px,8vw,72px) 0 16px}
+.landing-root .flow-card p{position:relative;z-index:1;max-width:30rem;color:var(--card-fg2);line-height:1.5}
+.landing-root .flow-art{position:relative;z-index:1;display:grid;gap:10px;align-content:center;margin-top:24px;--tint:color-mix(in srgb,var(--card-fg) 12%,transparent);--edge:color-mix(in srgb,var(--card-fg) 24%,transparent)}
+@media(min-width:760px){.landing-root .flow-art{position:absolute;top:clamp(24px,4vw,42px);bottom:clamp(24px,4vw,42px);right:clamp(24px,4vw,42px);width:min(44%,440px);margin:0}}
+.landing-root .flow-card[data-live="false"] .flow-art *{animation-play-state:paused}
+.landing-root .art-bars{display:flex;align-items:center;gap:3px;height:22px;flex:1}
+.landing-root .art-bars i{display:block;flex:1;max-width:5px;height:var(--h);border-radius:3px;background:currentColor;opacity:.85;transform-origin:center;animation:lnd-art-bar 1.1s ease-in-out infinite alternate;animation-delay:calc(var(--i) * -.13s)}
+@keyframes lnd-art-bar{from{transform:scaleY(.35)}to{transform:scaleY(1)}}
+/* 01 start: a typed phrase, a voice note, a tapped rhythm */
+.landing-root .art-pill{display:flex;align-items:center;gap:12px;min-height:46px;padding:0 18px;border-radius:999px;background:var(--tint);border:1px solid var(--edge);font-size:14px;overflow:hidden;opacity:0;animation:lnd-art-pop 9s ease-out infinite}
+.landing-root .art-type{animation-delay:0s}.landing-root .art-voice{animation-delay:1.2s}.landing-root .art-beat{animation-delay:2.4s}
+@keyframes lnd-art-pop{0%{opacity:0;transform:translateY(14px)}8%,86%{opacity:1;transform:none}96%,100%{opacity:0;transform:translateY(-8px)}}
+.landing-root .art-type span{display:inline-block;white-space:nowrap;overflow:hidden;border-right:2px solid var(--m-accent);animation:lnd-art-typing 9s steps(32,end) infinite,lnd-art-caret .7s step-end infinite}
+@keyframes lnd-art-typing{0%{width:0}22%,100%{width:100%}}
+@keyframes lnd-art-caret{50%{border-color:transparent}}
+.landing-root .art-voice .rec-dot{width:10px;height:10px;border-radius:50%;background:var(--m-accent);animation:lnd-art-rec 1.2s ease-in-out infinite}
+@keyframes lnd-art-rec{50%{transform:scale(1.5);opacity:.5}}
+.landing-root .art-voice em{font-style:normal;font-size:12px;opacity:.7;font-variant-numeric:tabular-nums}
+.landing-root .art-beat{justify-content:space-between}
+.landing-root .art-beat i{width:14px;height:14px;border-radius:50%;background:var(--edge);animation:lnd-art-tap .96s ease-in-out infinite;animation-delay:calc(var(--i) * .12s)}
+@keyframes lnd-art-tap{0%,100%{background:var(--edge);transform:scale(1)}12%{background:var(--m-accent);transform:scale(1.55)}28%{background:var(--edge);transform:scale(1)}}
+/* 02 explore: styles being tried on, moods and directions being tuned */
+.landing-root .art-chips{display:flex;flex-wrap:wrap;gap:8px}
+.landing-root .art-chips span{padding:8px 16px;border-radius:999px;border:1px solid var(--m-border);font:var(--m-type-chip);font-size:13px;animation:lnd-art-chip 9s ease-in-out infinite,lnd-art-float 4s ease-in-out infinite alternate;animation-delay:calc(var(--i) * 1.5s - 9s),calc(var(--i) * -.7s)}
+@keyframes lnd-art-chip{0%,16%{background:var(--m-accent);border-color:var(--m-accent);color:var(--m-brand-navy)}17%,100%{background:transparent;border-color:var(--m-border);color:inherit}}
+@keyframes lnd-art-float{to{translate:0 -5px}}
+.landing-root .art-sliders{display:grid;gap:12px;margin-top:14px}
+.landing-root .art-sliders div{display:grid;grid-template-columns:64px 1fr;align-items:center;gap:12px}
+.landing-root .art-sliders small{font-size:12px;color:var(--m-foreground-secondary)}
+.landing-root .art-sliders .track{position:relative;height:4px;border-radius:4px;background:var(--m-border)}
+.landing-root .art-sliders .track i{position:absolute;top:50%;left:0;width:16px;height:16px;margin:-8px 0 0 -8px;border-radius:50%;background:var(--m-element-sound);box-shadow:0 0 0 5px color-mix(in srgb,var(--m-element-sound) 25%,transparent);animation:lnd-art-slide 5s ease-in-out infinite alternate;animation-delay:calc(var(--i) * -1.6s)}
+@keyframes lnd-art-slide{0%{left:12%}35%{left:72%}65%{left:38%}100%{left:92%}}
+/* 03 choose: compare versions, fine-tune, save the one that fits */
+.landing-root .art-version{display:grid;grid-template-columns:78px 1fr 24px;align-items:center;gap:12px;min-height:50px;padding:0 14px;border-radius:14px;background:color-mix(in srgb,var(--card-fg) 8%,transparent);border:1.5px solid transparent;animation:lnd-art-compare 8s ease-in-out infinite;animation-delay:calc(var(--i) * 1.4s - 8s)}
+.landing-root .art-version small{font-size:12px;font-weight:700}
+.landing-root .art-version:nth-child(2){animation-name:lnd-art-compare-pick}
+@keyframes lnd-art-compare{0%,16%{border-color:var(--card-fg);background:color-mix(in srgb,var(--card-fg) 16%,transparent)}22%,100%{border-color:transparent}}
+@keyframes lnd-art-compare-pick{0%,16%{border-color:var(--card-fg);background:color-mix(in srgb,var(--card-fg) 16%,transparent)}22%,60%{border-color:transparent}68%,92%{border-color:var(--card-fg);background:color-mix(in srgb,var(--card-fg) 20%,transparent)}100%{border-color:transparent}}
+.landing-root .art-check{display:grid;place-items:center;width:24px;height:24px;border-radius:50%;border:1.5px solid var(--edge);opacity:.5}
+.landing-root .art-check svg{opacity:0}
+.landing-root .art-version:nth-child(2) .art-check{animation:lnd-art-check 8s ease-in-out infinite;animation-delay:-8s}
+.landing-root .art-version:nth-child(2) .art-check svg{animation:lnd-art-check-icon 8s ease-in-out infinite;animation-delay:-8s}
+@keyframes lnd-art-check{0%,64%{background:transparent;opacity:.5;transform:none}70%{transform:scale(1.25)}76%,92%{background:var(--card-fg);color:var(--m-gold);opacity:1;transform:none}100%{background:transparent;opacity:.5}}
+@keyframes lnd-art-check-icon{0%,66%{opacity:0}74%,92%{opacity:1}100%{opacity:0}}
+.landing-root .art-saved{justify-self:end;margin-top:2px;padding:6px 12px;border-radius:999px;background:var(--card-fg);color:var(--m-gold);font-size:12px;font-weight:700;opacity:0;animation:lnd-art-saved 8s ease-in-out infinite;animation-delay:-8s}
+@keyframes lnd-art-saved{0%,70%{opacity:0;transform:translateY(8px)}78%,92%{opacity:1;transform:none}100%{opacity:0}}
+.landing-root .art-version .art-bars{height:20px}
+.landing-root .art-version:nth-child(1) .art-bars i{animation-duration:.9s}.landing-root .art-version:nth-child(3) .art-bars i{animation-duration:1.4s}
+.landing-root .flow-card-one{background:var(--m-voice);--card-fg:var(--m-on-voice);--card-fg2:color-mix(in srgb,var(--m-on-voice) 78%,transparent)}
+.landing-root .flow-card-one b{color:var(--m-accent-soft)}
+.landing-root .flow-card-two{background:var(--m-surface);border:1px solid var(--m-border)}
+.landing-root .flow-card-two b{color:var(--m-label)}
+.landing-root .flow-card-three{background:var(--m-gold);--card-fg:var(--m-on-gold);--card-fg2:color-mix(in srgb,var(--m-on-gold) 80%,transparent)}
+
+/* ---------- Manifesto ---------- */
+.landing-root .manifesto{position:relative;isolation:isolate;display:flex;flex-direction:column;align-items:center;padding:var(--section-y) 0;text-align:center;overflow:hidden;border-top:1px solid var(--m-separator)}
+.landing-root .manifesto-rings{position:absolute;left:50%;top:50%;height:min(100%,820px);width:auto;aspect-ratio:1;overflow:visible;translate:-50% -50%;z-index:-1;opacity:.45}
+/* Orbits pulse outward from the center: each ring swells and brightens a beat after the one inside it. */
+.landing-root .orbit-ring{transform-box:fill-box;transform-origin:center;animation:lnd-orbit-pulse 3.6s cubic-bezier(.4,0,.2,1) infinite;animation-delay:calc(var(--i) * .3s)}
+@keyframes lnd-orbit-pulse{0%,100%{transform:scale(1);opacity:.55;stroke-width:1.2}28%{transform:scale(1.045);opacity:1;stroke-width:2.6}60%{transform:scale(1);opacity:.55;stroke-width:1.2}}
+.landing-root .manifesto-word{display:block;font:700 clamp(4.2rem,19vw,13rem)/.8 var(--m-font-display);letter-spacing:-.05em;transform:translateX(-3vw)}
+.landing-root .accent-word{color:var(--m-accent);transform:translateX(4vw)}
+.landing-root .manifesto p{max-width:28rem;margin:clamp(32px,5vw,48px) auto;color:var(--m-foreground-secondary);font-size:clamp(16px,1.6vw,19px);line-height:1.55}
+
+/* ---------- Pricing ---------- */
+.landing-root .pricing-grid{display:grid;grid-template-columns:minmax(0,1fr);gap:24px;max-width:520px}
+.landing-root .pricing-card{--pad:26px;position:relative;display:flex;flex-direction:column;padding:30px var(--pad);background:var(--m-surface);border:1px solid var(--m-border);border-radius:var(--m-radius-list-card);transition:transform .3s ease,border-color .3s ease,box-shadow .3s ease}
+.landing-root .pricing-card.featured{order:-1;background:var(--m-accent);color:var(--m-brand-navy);border-color:var(--m-accent)}
+.landing-root .pricing-card h3{font:var(--m-type-title);font-size:30px}
+.landing-root .pricing-card>p{color:var(--m-foreground-secondary);line-height:1.45;margin-top:6px}
+.landing-root .pricing-card strong{display:block;font:700 clamp(44px,5vw,64px)/1 var(--m-font-display);letter-spacing:-.04em;margin:26px 0 8px;white-space:nowrap}
+.landing-root .pricing-card strong small{font:500 14px var(--m-font-body);letter-spacing:0;margin-left:6px}
+.landing-root .annual-price{min-height:22px;color:var(--m-foreground-secondary);font-size:13px;margin-bottom:22px}
+.landing-root .pricing-card ul{list-style:none;padding:0;margin:0 0 28px;display:grid;gap:13px}
+.landing-root .pricing-card li{display:flex;align-items:flex-start;gap:9px;font-size:15px;line-height:1.4}
+.landing-root .pricing-card li svg{flex:none;margin-top:2px}
+.landing-root .pricing-card .button{width:100%;margin-top:auto}
+/* "Avance" button of the app screens: a capsule that bleeds out of the left edge, with a gold circle and arrow at its end. */
+.landing-root .adv-btn{position:relative;display:block;height:64px;margin-top:auto;margin-left:calc(var(--pad) * -1);width:calc(100% + var(--pad));color:var(--m-on-voice);transform-origin:left center;transition:transform .18s cubic-bezier(.23,1,.32,1),opacity .18s;-webkit-tap-highlight-color:transparent}
+.landing-root .adv-btn:active{transform:scale(.97);opacity:.85}
+.landing-root .adv-c{position:absolute;left:0;right:0;top:4px;height:56px;border-radius:0 28px 28px 0;background:var(--m-voice);display:flex;align-items:center;padding-left:calc(var(--pad) - 2px);font-weight:700;font-size:16px;letter-spacing:.04em;text-align:left}
+.landing-root .adv-d{position:absolute;right:0;top:4px;width:56px;height:56px;border-radius:50%;background:var(--m-gold);color:var(--m-brand-navy);display:grid;place-items:center;transition:transform .2s cubic-bezier(.23,1,.32,1)}
+@media(hover:hover){.landing-root .adv-btn:hover .adv-d{transform:translateX(4px)}}
+.landing-root .pricing-card.featured :focus-visible{outline-color:var(--m-brand-navy)}
+.landing-root .pricing-card.featured>p,.landing-root .pricing-card.featured .annual-price{color:color-mix(in srgb,var(--m-brand-navy) 78%,transparent)}
+.landing-root .popular{position:absolute;top:20px;right:22px;font:var(--m-type-label);font-size:11px;letter-spacing:var(--m-track-label)}
+.landing-root .pricing-note{color:var(--m-foreground-secondary);font-size:14px;line-height:1.5;margin-top:28px}
+@media(hover:hover){.landing-root .pricing-card:not(.featured):hover{transform:translateY(-6px);border-color:var(--m-accent)}.landing-root .pricing-card.featured:hover{transform:translateY(-6px);box-shadow:0 20px 40px -20px var(--m-accent)}}
+@media(min-width:960px){.landing-root .pricing-grid{grid-template-columns:repeat(3,minmax(0,1fr));max-width:none;gap:clamp(24px,2.8vw,44px)}.landing-root .pricing-card{--pad:30px;min-height:520px;padding:34px var(--pad)}.landing-root .pricing-card.featured{order:0}}
+
+/* ---------- Footer ---------- */
+.landing-footer{max-width:none;width:100%;margin:0;padding:24px var(--gutter) 36px;border-top:1px solid var(--m-separator);display:flex;flex-wrap:wrap;gap:12px 24px;justify-content:space-between;color:var(--m-foreground-secondary);font-size:13px}
+.landing-footer{padding-right:calc(var(--gutter) + 64px)}
+.landing-root .footer-brand{display:inline-flex;align-items:center;gap:12px}
+.landing-root .footer-brand img{height:22px;width:auto}
+
+@media(prefers-reduced-motion:reduce){
+  .landing-root *::before,.landing-root *::after{animation:none!important;transition-duration:.01ms!important}
+}
+
+/* Soundtrack toggle */
+.landing-root .sound-toggle{position:fixed;right:20px;bottom:20px;z-index:60;background:color-mix(in srgb,var(--m-background) 78%,transparent);-webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px);box-shadow:0 8px 24px -12px rgba(0,0,0,.5)}
+@media(min-width:900px){.landing-root .sound-toggle{right:32px;bottom:28px}}
+
+/* From "Funciones" to "Precios" every container shares one, slightly narrower, width on desktop (the footer keeps the full width). */
+@media(min-width:900px){
+  .landing-root{--section-w:min(1320px,calc((100vw - 2 * var(--gutter)) * .92))}
+  .landing-root .features,.landing-root .story,.landing-root .manifesto,.landing-root .pricing{width:var(--section-w);margin-inline:auto}
+}
+
+/* ====================================================================================================================
+   Adaptación a Melodya Web (no existe en melodya.landing)
+   ==================================================================================================================== */
+
+/* Contenedor propio: fondo opaco sobre el del AppShell, apilamiento aislado (la capa de estrellas queda detrás del contenido pero sobre el fondo)
+   y recorte horizontal (el hero usa 100vw). Sin tocar html ni body: nada de esto afecta a otras pantallas. */
+.landing-root{position:relative;isolation:isolate;width:100%;min-height:100svh;display:flex;flex-direction:column;-webkit-text-size-adjust:100%}
+.landing-root .landing-main{flex:1 0 auto}
+.landing-root [id]{scroll-margin-top:calc(var(--header-h) + 12px)}
+
+/* Tokens del sistema visual 2.0 que la web aún no define (los colores ya existen en globals.css: claro en :root, oscuro en .dark). */
+.landing-root{
+  --m-brand-navy:#131C33;
+  --m-font-display:var(--font-bricolage),'Bricolage Grotesque','Figtree',system-ui,sans-serif;
+  --m-font-body:var(--font-figtree),'Figtree',system-ui,sans-serif;
+  --m-radius-list-card:28px 28px 14px 14px;
+  --m-size-touch-min:44px;--m-size-icon-button:44px;--m-size-pill-height:56px;
+  --m-type-body:400 16px/1.45 var(--m-font-body);
+  --m-type-chip:500 14px/1.2 var(--m-font-body);
+  --m-type-label:700 12px/1.3 var(--m-font-body);--m-track-label:0.12em;
+  --m-type-button:700 16px/1.2 var(--m-font-body);--m-track-button:0.04em;
+  --m-type-row-title:700 18px/1.2 var(--m-font-display);
+  --m-type-option-title:700 21px/1.2 var(--m-font-display);
+  --m-type-title:700 30px/1.1 var(--m-font-display);
+}
+
+/* Logos: dos imágenes y se muestra la del tema activo con CSS (sin esperar a que el tema se resuelva). */
+.landing-root .brand img.logo-light{display:none}
+html:not(.dark) .landing-root .brand img.logo-dark{display:none}
+html:not(.dark) .landing-root .brand img.logo-light{display:block}
+
+/* Header: «Ingresar» (contorno) y «Empezar» (relleno) con las rutas reales de la app. */
+.landing-root .login.solid{background:var(--m-accent);border-color:var(--m-accent);color:var(--m-on-accent)}
+@media(hover:hover){.landing-root .login.solid:hover{background:var(--m-accent);border-color:var(--m-accent);color:var(--m-on-accent);box-shadow:0 10px 24px -10px var(--m-accent)}}
+
+/* Reproductor global (fijo abajo): el botón de sonido y el pie dejan lugar mientras hay un tema cargado. */
+.landing-root[data-player="on"] .sound-toggle{bottom:100px}.landing-root[data-player="on"] .landing-footer{padding-bottom:112px}
+
+/* ---------- Comunidad (canciones del backend) ---------- */
+.landing-root .community{border-top:1px solid var(--m-separator)}
+.landing-root .community header{margin-bottom:48px}
+.landing-root .community h2{font-size:clamp(2.4rem,8.4vw,5rem);line-height:1;letter-spacing:-.035em}
+.landing-root .community h2 span{color:var(--m-accent)}
+.landing-root .community .section-intro{max-width:none}
+.landing-root .song-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:clamp(14px,2vw,28px)}
+@media(min-width:760px){.landing-root .song-grid{grid-template-columns:repeat(4,minmax(0,1fr))}}
+.landing-root .song-card{min-width:0}
+.landing-root .song-card.is-loading{aspect-ratio:3/4;border-radius:var(--m-radius-list-card);background:var(--m-surface);animation:lnd-pulse 1.4s ease-in-out infinite}
+.landing-root .song-cover{position:relative;transition:transform .3s ease}
+@media(hover:hover){.landing-root .song-card:hover .song-cover{transform:translateY(-4px)}}
+.landing-root .song-play{position:absolute;right:10px;bottom:10px;z-index:2;display:grid;place-items:center;width:var(--m-size-touch-min);height:var(--m-size-touch-min);border:0;border-radius:50%;background:var(--m-accent);color:var(--m-on-accent);cursor:pointer;box-shadow:0 8px 20px -8px rgba(0,0,0,.55);transition:transform .2s ease}
+.landing-root .song-play:active{transform:scale(.94)}
+@media(hover:hover){.landing-root .song-play:hover{transform:scale(1.08)}}
+.landing-root .song-card h3{margin-top:14px;font:var(--m-type-row-title);letter-spacing:-.01em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.landing-root .song-card h3 a:hover{color:var(--m-accent)}
+.landing-root .song-author{margin-top:4px;color:var(--m-foreground-secondary);font-size:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.landing-root .song-likes{display:inline-flex;align-items:center;gap:6px;margin-top:8px;color:var(--m-foreground-secondary);font-size:13px}
+.landing-root .song-likes svg{color:var(--m-accent)}
+.landing-root .community-more{display:flex;justify-content:center;margin-top:44px}
+.landing-root .community-more .button{cursor:pointer;background:transparent;color:inherit}
+
+/* ---------- Precios (planes del backend): lo que la landing escribía a mano ahora es dato ---------- */
+.landing-root .pricing-card.is-loading{min-height:420px;border-color:transparent;animation:lnd-pulse 1.4s ease-in-out infinite}
+.landing-root .pricing-card .price-was{display:block;margin-bottom:4px;font:500 18px var(--m-font-body);letter-spacing:0;opacity:.7}
+.landing-root .pricing-card li.is-off{opacity:.55}
+.landing-root .pricing-card .adv-btn{border:0;padding:0;background:transparent;cursor:pointer;font:inherit;text-align:left}
+.landing-root .pricing .pricing-grid{margin-bottom:0}
+.landing-root .pricing [role="alert"]{max-width:520px}
+
+@keyframes lnd-pulse{50%{opacity:.55}}
+@media(prefers-reduced-motion:reduce){.landing-root .song-card.is-loading,.landing-root .pricing-card.is-loading{animation:none}}
+
+/* Las descripciones del backend pueden ser largas: se acortan a 4 líneas (el texto completo queda en el atributo title) para que las tarjetas queden parejas. */
+.landing-root .pricing-card .plan-desc{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:4;line-clamp:4;overflow:hidden;font-size:15px}
+@media(min-width:960px){.landing-root .pricing-card .plan-desc{min-height:calc(1.45em * 4)}}
