@@ -840,11 +840,11 @@ export function CreatorWizard() {
 
         {(projects?.items?.length ?? 0) > 0 && !versionOfId && (
           <div className="mt-5 max-w-sm space-y-2">
-            <Label htmlFor="song-project" className="text-xs font-medium text-muted-foreground">Guardar en un proyecto (opcional)</Label>
+            <Label htmlFor="song-project" className="text-xs font-medium text-muted-foreground">Guardar en un álbum (opcional)</Label>
             <Select value={song.projectId} onValueChange={(v) => setSong((s) => ({ ...s, projectId: v }))}>
-              <SelectTrigger id="song-project"><SelectValue placeholder="Sin proyecto" /></SelectTrigger>
+              <SelectTrigger id="song-project"><SelectValue placeholder="Sin álbum" /></SelectTrigger>
               <SelectContent>
-                <SelectItem value="none">Sin proyecto</SelectItem>
+                <SelectItem value="none">Sin álbum</SelectItem>
                 {(projects?.items ?? []).map((p) => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}
               </SelectContent>
             </Select>

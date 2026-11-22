@@ -118,13 +118,13 @@ export function ProjectsTab() {
       toast({
         title:
           songsAdded > 0
-            ? `Proyecto creado y ${songsAdded} ${songsAdded === 1 ? 'canción agregada' : 'canciones agregadas'}`
-            : 'Proyecto creado',
+            ? `Álbum creado y ${songsAdded} ${songsAdded === 1 ? 'canción agregada' : 'canciones agregadas'}`
+            : 'Álbum creado',
         description: songsAdded > 0 ? undefined : 'Ya podés guardar tus canciones ahí.',
       });
       announceFlowIssues(outcome, 'add', toast);
     },
-    onError: (err) => toast({ title: 'No pudimos crear el proyecto', description: toUserMessage(err), variant: 'destructive' }),
+    onError: (err) => toast({ title: 'No pudimos crear el álbum', description: toUserMessage(err), variant: 'destructive' }),
   });
 
   /* Editar (nombre/descripción/portada + diff de canciones). */
@@ -169,31 +169,31 @@ export function ProjectsTab() {
       if (vars.cover && !outcome.coverError) summary.push('Portada actualizada');
       if (outcome.addOk > 0) summary.push(`${outcome.addOk} ${outcome.addOk === 1 ? 'agregada' : 'agregadas'}`);
       if (outcome.removeOk > 0) summary.push(`${outcome.removeOk} ${outcome.removeOk === 1 ? 'quitada' : 'quitadas'}`);
-      toast({ title: 'Proyecto actualizado', description: summary.length > 0 ? summary.join(' · ') : undefined });
+      toast({ title: 'Álbum actualizado', description: summary.length > 0 ? summary.join(' · ') : undefined });
       announceFlowIssues(outcome, 'edit', toast);
     },
-    onError: (err) => toast({ title: 'No pudimos actualizar el proyecto', description: toUserMessage(err), variant: 'destructive' }),
+    onError: (err) => toast({ title: 'No pudimos actualizar el álbum', description: toUserMessage(err), variant: 'destructive' }),
   });
 
   const removeMutation = useMutation({
     mutationFn: (id: string) => projectsApi.remove(id),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ['projects'] });
-      toast({ title: 'Proyecto enviado a la Papelera', description: 'Tus canciones siguen intactas en Canciones.' });
+      toast({ title: 'Álbum enviado a la Papelera', description: 'Tus canciones siguen intactas en Canciones.' });
       setToDelete(null);
     },
-    onError: (err) => toast({ title: 'No pudimos eliminar el proyecto', description: toUserMessage(err), variant: 'destructive' }),
+    onError: (err) => toast({ title: 'No pudimos eliminar el álbum', description: toUserMessage(err), variant: 'destructive' }),
   });
 
   return (
-    <section aria-label="Tus proyectos">
+    <section aria-label="Tus álbumes">
       <SectionHeader
-        title="Proyectos"
+        title="Álbumes"
         subtitle="Espacios para agrupar canciones por idea, disco o momento."
         hideSubtitleOnMobile
         action={
           <TabCtaButton icon={Plus} onClick={() => setCreateOpen(true)}>
-            Nuevo proyecto
+            Nuevo álbum
           </TabCtaButton>
         }
       />
@@ -206,9 +206,9 @@ export function ProjectsTab() {
         <EmptyState
           variant="studio"
           icon={<ListMusic className="h-7 w-7" />}
-          title="Todavía no tenés proyectos."
+          title="Todavía no tenés álbumes."
           description="Organizá tus canciones en espacios: un EP, una playlist conceptual, lo que se te ocurra."
-          actionLabel="Crear mi primer proyecto"
+          actionLabel="Crear mi primer álbum"
           onAction={() => setCreateOpen(true)}
         />
       ) : (
@@ -220,7 +220,7 @@ export function ProjectsTab() {
               <button
                 type="button"
                 onClick={() => setOpenProject(project)}
-                aria-label={`Abrir proyecto ${project.name}`}
+                aria-label={`Abrir álbum ${project.name}`}
                 className="block w-full cursor-pointer rounded-[28px_28px_14px_14px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               >
                 <CoverArt id={project.id} src={project.coverUrl ?? null} alt="" className="aspect-square w-full transition-transform duration-300" rounded="rounded-[28px_28px_14px_14px]" />
@@ -232,7 +232,7 @@ export function ProjectsTab() {
                     type="button"
                     onClick={() => setOpenProject(project)}
                     className="block w-full min-w-0 cursor-pointer rounded text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
-                    aria-label={`Abrir proyecto ${project.name}`}
+                    aria-label={`Abrir álbum ${project.name}`}
                   >
                     <h3 className="truncate text-[15px] leading-tight font-semibold text-foreground">{project.name}</h3>
                   </button>
@@ -277,16 +277,16 @@ export function ProjectsTab() {
       <ProjectFormDialog
         open={createOpen}
         onOpenChange={setCreateOpen}
-        title="Nuevo proyecto"
+        title="Nuevo álbum"
         description="Un espacio para agrupar canciones: un EP, un concepto, una época."
-        submitLabel="Crear proyecto"
+        submitLabel="Crear álbum"
         pending={createMutation.isPending}
         onSubmit={({ body, cover, songIds }) => createMutation.mutate({ body, cover, songIds })}
       />
       <ProjectFormDialog
         open={!!editing}
         onOpenChange={(o) => !o && setEditing(null)}
-        title="Editar proyecto"
+        title="Editar álbum"
         description="Cambiá el nombre, la portada o las canciones cuando quieras."
         submitLabel="Guardar cambios"
         initial={editing ?? undefined}
@@ -299,7 +299,7 @@ export function ProjectsTab() {
         onOpenChange={(o) => !o && setToDelete(null)}
         title={`¿Enviar "${toDelete?.name ?? ''}" a la Papelera?`}
         actionLabel="Enviar a la Papelera"
-        description="El proyecto sale de tu biblioteca, pero tus canciones no se mueven: las seguís viendo en Canciones. Lo restaurás desde la Papelera."
+        description="El álbum sale de tu biblioteca, pero tus canciones no se mueven: las seguís viendo en Canciones. Lo restaurás desde la Papelera."
         onConfirm={() => toDelete && removeMutation.mutate(toDelete.id)}
         pending={removeMutation.isPending}
       />
@@ -446,7 +446,7 @@ function ProjectFormDialog({
             <button
               type="button"
               onClick={() => coverInputRef.current?.click()}
-              aria-label={form.cover ? 'Cambiar la portada elegida' : 'Elegir portada del proyecto'}
+              aria-label={form.cover ? 'Cambiar la portada elegida' : 'Elegir portada del álbum'}
               className={cn(
                 'flex aspect-video w-full cursor-pointer flex-col items-center justify-center gap-4 overflow-hidden rounded-[28px_28px_14px_14px] border-[1.5px] border-dashed p-6 text-center transition-colors max-sm:aspect-auto max-sm:h-20 max-sm:flex-row max-sm:gap-3 max-sm:p-3 max-sm:text-left focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground',
                 form.cover || initial?.coverUrl ? 'border-amber/50 bg-amber/5 p-0' : 'border-line bg-[var(--m-input)] hover:border-amber/40'
@@ -455,7 +455,7 @@ function ProjectFormDialog({
               {form.cover && form.previewUrl ? (
                 <img src={form.previewUrl} alt="Vista previa de la portada" className="h-full w-full object-cover" />
               ) : !form.cover && initial?.coverUrl ? (
-                <CoverArt id={initial.id} src={initial.coverUrl} alt="Portada actual del proyecto" className="h-full w-full" rounded="rounded-none" />
+                <CoverArt id={initial.id} src={initial.coverUrl} alt="Portada actual del álbum" className="h-full w-full" rounded="rounded-none" />
               ) : (
                 <>
                   {/* Núcleo de voz (igual que el estado vacío del Estudio de letras): aro tenue y círculo de voz con el ícono dorado */}
@@ -468,7 +468,7 @@ function ProjectFormDialog({
                     </span>
                   </span>
                   <span className="flex min-w-0 flex-col items-center gap-4 max-sm:items-start max-sm:gap-0.5">
-                    <span className="max-w-[250px] font-display text-[19px] leading-tight font-semibold text-foreground max-sm:text-base">Portada del proyecto (opcional)</span>
+                    <span className="max-w-[250px] font-display text-[19px] leading-tight font-semibold text-foreground max-sm:text-base">Portada del álbum (opcional)</span>
                     <span className="max-w-xs text-sm text-muted-foreground max-sm:text-xs">Tocá para elegir una imagen · hasta 5 MB</span>
                   </span>
                 </>
@@ -509,21 +509,21 @@ function ProjectFormDialog({
             />
           </Field>
 
-          <Field label="Canciones del proyecto" hint="Elegís cuáles de tus canciones viven en este espacio.">
+          <Field label="Canciones del álbum" hint="Elegís cuáles de tus canciones viven en este espacio.">
             {songsLoading ? (
               <SongRowsSkeleton />
             ) : userSongsQuery.isError ? (
               <p className="text-xs leading-relaxed text-muted-foreground">
-                No pudimos cargar tus canciones ({toUserMessage(userSongsQuery.error)}). El proyecto se guarda igual.
+                No pudimos cargar tus canciones ({toUserMessage(userSongsQuery.error)}). El álbum se guarda igual.
               </p>
             ) : isEdit && projectSongsQuery.isError ? (
               <div className="space-y-2">
-                <InlineError message="No pudimos cargar las canciones actuales del proyecto; al guardar no se quita ninguna." />
+                <InlineError message="No pudimos cargar las canciones actuales del álbum; al guardar no se quita ninguna." />
                 <SongCheckList songs={userSongs} selected={effectiveSelected} onToggle={toggleSong} idPrefix="project-form" />
               </div>
             ) : userSongs.length === 0 ? (
               <p className="text-xs leading-relaxed text-muted-foreground">
-                Todavía no tenés canciones. Generá la primera y después la sumás al proyecto.
+                Todavía no tenés canciones. Generá la primera y después la sumás al álbum.
               </p>
             ) : (
               <SongCheckList songs={userSongs} selected={effectiveSelected} onToggle={toggleSong} idPrefix="project-form" />
@@ -828,7 +828,7 @@ function ProjectSongsSheet({ project, onClose }: { project: Project | null; onCl
         void qc.invalidateQueries({ queryKey: ['projects'] });
         void qc.invalidateQueries({ queryKey: ['songs'] });
       }
-      toast({ title: 'Quitada del proyecto', description: 'La canción sigue en tu biblioteca.' });
+      toast({ title: 'Quitada del álbum', description: 'La canción sigue en tu biblioteca.' });
     },
     onError: (err) => toast({ title: 'No pudimos quitar la canción', description: toUserMessage(err), variant: 'destructive' }),
   });
@@ -862,7 +862,7 @@ function ProjectSongsSheet({ project, onClose }: { project: Project | null; onCl
             <CoverArt
               id={project.id}
               src={project.coverUrl ?? null}
-              alt={project.name ? `Portada de ${project.name}` : 'Portada del proyecto'}
+              alt={project.name ? `Portada de ${project.name}` : 'Portada del álbum'}
               className="h-44 w-full"
               rounded="rounded-none"
             />
@@ -878,7 +878,7 @@ function ProjectSongsSheet({ project, onClose }: { project: Project | null; onCl
             /* Sin descripción: el texto de relleno va como el título «Materiales» de Crear (punto dorado + mayúsculas) */
             <SheetDescription className="flex items-center gap-2 text-[13px] font-bold uppercase tracking-[0.08em] text-label">
               <span aria-hidden className="size-[7.5px] shrink-0 rounded-full bg-gold" />
-              Canciones de este proyecto
+              Canciones de este álbum
             </SheetDescription>
           )}
           <p className="text-xs text-muted-foreground" aria-live="polite">
@@ -942,10 +942,10 @@ function ProjectSongsSheet({ project, onClose }: { project: Project | null; onCl
           <div className="space-y-3 px-4 pb-8 pt-6 text-[13px] leading-snug font-semibold text-foreground">
             {/* Cápsula terracota como las de “Influencia del estilo” en Creatividad: pegada al borde izquierdo del panel */}
             <div className="-ml-4 w-[calc(100%+1rem)] rounded-r-[40px] bg-voice py-4 pr-5 pl-5 text-on-voice">
-              <p>Este proyecto todavía no tiene canciones.</p>
+              <p>Este álbum todavía no tiene canciones.</p>
             </div>
             <p>
-              Al generar una canción nueva, elegí este proyecto como destino — o agregá las que ya tenés con el botón de arriba.
+              Al generar una canción nueva, elegí este álbum como destino — o agregá las que ya tenés con el botón de arriba.
             </p>
           </div>
         ) : (
@@ -1000,8 +1000,8 @@ function ProjectSongsSheet({ project, onClose }: { project: Project | null; onCl
                   <Button
                     variant="ghost"
                     size="icon"
-                    aria-label={`Quitar ${song.title} del proyecto`}
-                    title="Quitar del proyecto"
+                    aria-label={`Quitar ${song.title} del álbum`}
+                    title="Quitar del álbum"
                     className="h-9 w-9 shrink-0 rounded-full text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
                     disabled={removeSongMutation.isPending}
                     onClick={() => removeSongMutation.mutate(song.id)}

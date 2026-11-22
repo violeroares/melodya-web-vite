@@ -9,7 +9,7 @@ export type TrashType = (typeof TRASH_TYPE_KEYS)[number];
 export const TRASH_TYPE_LABELS: Record<TrashType, string> = {
   songs: 'Canciones',
   lyrics: 'Letras',
-  projects: 'Proyectos',
+  projects: 'Álbumes',
   songwriters: 'Letristas',
   samples: 'Audios y voces',
 };
@@ -18,7 +18,7 @@ export const TRASH_TYPE_LABELS: Record<TrashType, string> = {
 export const TRASH_RESTORED_TITLE: Record<TrashType, string> = {
   songs: 'Canción restaurada',
   lyrics: 'Letra restaurada',
-  projects: 'Proyecto restaurado',
+  projects: 'Álbum restaurado',
   songwriters: 'Letrista restaurado',
   samples: 'Elemento restaurado',
 };
@@ -26,7 +26,7 @@ export const TRASH_RESTORED_TITLE: Record<TrashType, string> = {
 export const TRASH_EMPTY: Record<TrashType, { title: string; description: string }> = {
   songs: { title: 'No hay canciones en la Papelera.', description: 'Las canciones que envíes a la Papelera aparecen acá y podés restaurarlas cuando quieras.' },
   lyrics: { title: 'No hay letras en la Papelera.', description: 'Las letras que envíes a la Papelera aparecen acá y podés restaurarlas cuando quieras.' },
-  projects: { title: 'No hay proyectos en la Papelera.', description: 'Los proyectos que envíes a la Papelera aparecen acá. Sus canciones nunca se mueven.' },
+  projects: { title: 'No hay álbumes en la Papelera.', description: 'Los álbumes que envíes a la Papelera aparecen acá. Sus canciones nunca se mueven.' },
   songwriters: { title: 'No hay letristas en la Papelera.', description: 'Los letristas que envíes a la Papelera aparecen acá y vuelven con sus referencias.' },
   samples: { title: 'No hay audios ni voces en la Papelera.', description: 'Lo que envíes a la Papelera aparece acá con su audio conservado.' },
 };

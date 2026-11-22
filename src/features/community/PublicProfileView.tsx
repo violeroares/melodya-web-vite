@@ -25,6 +25,7 @@ import { toUserMessage } from '@/lib/errors';
 import { cn } from '@/lib/utils';
 import { shareContent } from '@/lib/share';
 import { userUrl } from '@/lib/links';
+import { hasText } from '@/features/song/song-details';
 import { useAuthStore } from '@/stores/auth';
 import { usePlayerStore, type PlayerTrack } from '@/stores/player';
 import { formatNumber } from '@/hooks';
@@ -191,6 +192,18 @@ export function PublicProfileView({ userId }: { userId: string }) {
         onOpenList={(mode) => setListMode(mode)}
         onRefetchProfile={() => void profileQuery.refetch()}
       />
+
+      {/* Bio pública del creador (la que escribe en «Mi perfil»): solo si tiene texto; respeta los saltos de línea */}
+      {hasText(profile.bio) && (
+        <section aria-label={`Bio de ${profile.name}`} className="min-w-0">
+          {/* Como una cita: filete dorado a la izquierda y comillas de apertura y cierre; texto normal (sin cursiva) con la misma tipografía que la descripción de una canción (text-sm, leading-relaxed) */}
+          <blockquote className="w-full min-w-0 border-l-[3px] border-[var(--m-gold)] py-0.5 pl-4 sm:pl-5">
+            <p className="whitespace-pre-line break-words [overflow-wrap:anywhere] text-sm font-normal leading-relaxed text-muted-foreground before:mr-1 before:text-xl before:leading-none before:text-[var(--m-gold)] before:content-['“'] after:ml-1 after:text-xl after:leading-none after:text-[var(--m-gold)] after:content-['”']">
+              {profile.bio.trim()}
+            </p>
+          </blockquote>
+        </section>
+      )}
 
       <CreatorSongs userId={userId} songsCount={profile.songsCount} />
 
@@ -449,17 +462,21 @@ function ProfileHeader({
               <h1 className="truncate font-display text-2xl font-extrabold tracking-tight text-white drop-shadow sm:text-4xl">
                 {profile.name}
               </h1>
+              {/* Reproducciones totales bajo el nombre (en la franja de contadores la fila se partía en dos líneas en celulares angostos) */}
+              <p
+                className="mt-1 inline-flex items-center gap-1.5 text-sm text-white/80"
+                title="Reproducciones totales de sus canciones públicas"
+              >
+                <Play className="h-4 w-4" aria-hidden />
+                <span className="font-semibold tabular-nums">{formatNumber(profile.totalPlays)}</span>
+                reproducciones
+              </p>
             </div>
           </div>
 
         </div>
           {/* stats clicables, sobre la portada (abajo, igual que en el detalle de una canción): mismo estilo que los números del detalle de una canción (franja navy translúcida, crema, 14 px semibold, íconos de 17 px) */}
           <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 bg-surface/80 py-3 pr-24 pl-4 text-[14px] font-semibold text-foreground/85 sm:pr-24 sm:pl-6 dark:bg-[rgba(19,28,51,.72)] dark:text-[rgba(243,229,226,.85)]">
-            <span className="inline-flex items-center gap-1.5" title="Reproducciones totales de sus canciones públicas">
-              <Play className="h-[17px] w-[17px]" aria-hidden />
-              <span className="tabular-nums">{formatNumber(profile.totalPlays)}</span>
-              <span className="@max-[48rem]:sr-only">reproducciones</span>
-            </span>
             <button
               type="button"
               onClick={() => document.getElementById('creator-songs')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}

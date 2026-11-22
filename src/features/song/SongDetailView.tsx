@@ -1108,13 +1108,13 @@ export function SongDetailView({ songId }: { songId: string }) {
       void qc.invalidateQueries({ queryKey: ['project-songs'] });
       if (projectId) {
         const name = (projectsQuery.data?.items ?? []).find((p) => p.id === projectId)?.name;
-        toast({ title: name ? `Canción movida a ${name}` : 'Canción movida al proyecto' });
+        toast({ title: name ? `Canción movida a ${name}` : 'Canción movida al álbum' });
       } else {
-        toast({ title: 'Canción quitada del proyecto' });
+        toast({ title: 'Canción quitada del álbum' });
       }
       setProjectDialogOpen(false);
     },
-    onError: (err) => toast({ title: 'No pudimos actualizar el proyecto de la canción', description: toUserMessage(err), variant: 'destructive' }),
+    onError: (err) => toast({ title: 'No pudimos actualizar el álbum de la canción', description: toUserMessage(err), variant: 'destructive' }),
   });
 
   /* ── handlers ── */
@@ -1625,7 +1625,7 @@ export function SongDetailView({ songId }: { songId: string }) {
                         setProjectDialogOpen(true);
                       }}
                     >
-                      <FolderOpen className="h-4 w-4" aria-hidden /> Agregar a proyecto
+                      <FolderOpen className="h-4 w-4" aria-hidden /> Agregar a álbum
                     </DropdownMenuItem>
                     <DropdownMenuItem
                       disabled={deleteMutation.isPending}
@@ -1777,7 +1777,7 @@ export function SongDetailView({ songId }: { songId: string }) {
               </span>
             )}
             {songProject && (
-              <span className="inline-flex items-center gap-1.5 text-sm text-muted-foreground" title={`Proyecto: ${songProject.name}`}>
+              <span className="inline-flex items-center gap-1.5 text-sm text-muted-foreground" title={`Álbum: ${songProject.name}`}>
                 <FolderOpen className="h-3.5 w-3.5 text-gold" aria-hidden />
                 {songProject.name}
               </span>
@@ -2268,12 +2268,12 @@ export function SongDetailView({ songId }: { songId: string }) {
       <Dialog open={projectDialogOpen} onOpenChange={setProjectDialogOpen}>
         <DialogContent className="max-w-md border-border/70 bg-surface">
           <DialogHeader>
-            <DialogTitle className="font-display">Agregar a un proyecto</DialogTitle>
+            <DialogTitle className="font-display">Agregar a un álbum</DialogTitle>
             <DialogDescription>Elegí dónde vive «{song.title}».</DialogDescription>
           </DialogHeader>
 
           {projectsQuery.isLoading ? (
-            <div className="space-y-2" aria-busy="true" aria-label="Cargando proyectos">
+            <div className="space-y-2" aria-busy="true" aria-label="Cargando álbumes">
               <Skeleton className="h-16 rounded-xl" />
               <Skeleton className="h-16 rounded-xl" />
               <Skeleton className="h-16 rounded-xl" />
@@ -2285,7 +2285,7 @@ export function SongDetailView({ songId }: { songId: string }) {
               <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-amber/10 text-amber-strong" aria-hidden>
                 <FolderPlus className="h-6 w-6" />
               </span>
-              <p className="text-sm text-muted-foreground">Todavía no tenés proyectos para organizar tus canciones.</p>
+              <p className="text-sm text-muted-foreground">Todavía no tenés álbumes para organizar tus canciones.</p>
               <Button
                 variant="outline"
                 className="rounded-full border-amber/40 bg-amber/10 text-amber-strong transition-colors hover:border-amber hover:bg-amber/20"
@@ -2294,12 +2294,12 @@ export function SongDetailView({ songId }: { songId: string }) {
                   navigate('/library/projects');
                 }}
               >
-                <FolderPlus className="h-4 w-4" aria-hidden /> Crear un proyecto
+                <FolderPlus className="h-4 w-4" aria-hidden /> Crear un álbum
               </Button>
             </div>
           ) : (
             <>
-              <div role="radiogroup" aria-label="Tus proyectos" className="space-y-2">
+              <div role="radiogroup" aria-label="Tus álbumes" className="space-y-2">
                 {projects.map((p) => {
                   const isCurrent = song.projectId === p.id;
                   const isSelected = selectedProjectId === p.id;
@@ -2352,7 +2352,7 @@ export function SongDetailView({ songId }: { songId: string }) {
                       onClick={() => moveToProjectMutation.mutate(null)}
                       disabled={moveToProjectMutation.isPending}
                     >
-                      Quitar del proyecto
+                      Quitar del álbum
                     </Button>
                   )}
                 </div>

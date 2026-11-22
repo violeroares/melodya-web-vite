@@ -33,7 +33,7 @@ const MAIN: NavItem[] = [
 
 const LIBRARY: NavItem[] = [
   { to: '/library/songs', label: 'Canciones', icon: Music4 },
-  { to: '/library/projects', label: 'Proyectos', icon: ListMusic },
+  { to: '/library/projects', label: 'Álbumes', icon: ListMusic },
   { to: '/library/lyrics', label: 'Letras', icon: FileText },
   { to: '/library/lyric-personas', label: 'Letristas', icon: PenLine },
   { to: '/library/samples', label: 'Audios', icon: AudioLines },

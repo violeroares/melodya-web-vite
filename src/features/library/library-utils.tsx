@@ -24,7 +24,7 @@ export type LibraryTabKey = 'songs' | 'projects' | 'lyrics' | 'lyric-personas' |
 
 export const LIBRARY_TABS: Array<{ key: LibraryTabKey; label: string; icon: React.ComponentType<{ className?: string }> }> = [
   { key: 'songs', label: 'Canciones', icon: Music4 },
-  { key: 'projects', label: 'Proyectos', icon: ListMusic },
+  { key: 'projects', label: 'Álbumes', icon: ListMusic },
   { key: 'lyrics', label: 'Letras', icon: FileText },
   { key: 'lyric-personas', label: 'Letristas', icon: PenLine },
   { key: 'samples', label: 'Audios', icon: AudioLines },
