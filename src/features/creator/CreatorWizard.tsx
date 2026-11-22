@@ -59,7 +59,7 @@ import { SolarSystem, planetIcon, PLANET_DOT } from './SolarSystem';
 import { CompositionEditor, StyleEditor, VoiceEditor, ReferenceEditor, ProductionEditor, CreativityEditor } from './PlanetEditors';
 import {
   emptySong, isEmptySong, parseSong, audioWeightApplies, availability, addPlanet, removePlanet, updatePlanet, validateSong,
-  hasErrors, summarize, describeTreatment, applyLyricsFromStudio, buildGenerationRequest, planetDef, activePlanets, hasStyleInputs,
+  hasErrors, summarize, describeTreatment, applyLyricsFromStudio, buildGenerationRequest, planetDef, activePlanets, hasStyleInputs, applySuggestedIdea,
   type SongState, type PlanetId, type Capabilities,
 } from './song-model';
 
@@ -916,9 +916,7 @@ export function CreatorWizard() {
                     onOpenStudio={() => (lyricsGate.locked ? lyricsGate.prompt() : setStudioOpen(true))}
                     locks={locks}
                     lockedTitle={versionOfId ? source.song?.title ?? '' : undefined}
-                    onApplySuggestion={(idea, genres) => {
-                      setSong((s) => updatePlanet(updatePlanet(s, 'composition', idea ? { idea } : {}), 'style', genres.length ? { genres } : {}));
-                    }}
+                    onApplySuggestion={(idea) => setSong((s) => applySuggestedIdea(s, idea))}
                   />
                 )}
                 {current.id === 'style' && <StyleEditor song={song} patch={patch.style} issues={issues} />}
