@@ -40,7 +40,8 @@ function speedLabel(v: number) {
   return `${v === 1 ? '1' : v.toFixed(2).replace(/0$/, '')}×`;
 }
 
-export function PlayerBar() {
+/** `withBottomNav`: en móvil el reproductor se apoya sobre el BottomNav (76px). Sin él (landing pública, que no lo muestra) baja al borde. */
+export function PlayerBar({ withBottomNav = true }: { withBottomNav?: boolean } = {}) {
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const volumeRef = useRef<HTMLDivElement | null>(null);
   const { track, queue, isPlaying, position, duration, volume, muted, speed, shuffle, sleepAt, sleepEndOfTrack, sessionRestored, setAudio, toggle, seek, setVolume, setSpeed, toggleMute, toggleShuffle, next, prev, stop, retryWithAuth, acknowledgeRestore } =
@@ -249,7 +250,7 @@ export function PlayerBar() {
       <div
         role="region"
         aria-label="Reproductor"
-        className="pointer-events-none fixed inset-x-0 bottom-[76px] z-40 md:bottom-3"
+        className={cn('pointer-events-none fixed inset-x-0 z-40 md:bottom-3', withBottomNav ? 'bottom-[76px]' : 'bottom-3')}
       >
         <div className="pointer-events-auto flex h-[72px] items-center gap-3 pr-3 sm:mr-4 sm:gap-4 sm:rounded-r-[36px] sm:bg-voice sm:pr-6 sm:text-on-voice sm:shadow-lg">
           {/* Tarjeta de la canción (design-V2): pegada al borde izquierdo, abre el reproductor expandido */}

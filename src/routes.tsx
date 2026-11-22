@@ -15,7 +15,7 @@
  * Las vistas se cargan con `lazy` del data router: al cambiar de ruta React Router espera el chunk SIN desmontar
  * el shell (el reproductor sigue sonando) y SIN parpadeos.
  */
-import { useEffect } from 'react';
+import { Suspense, lazy, useEffect } from 'react';
 import { Navigate, Outlet, createBrowserRouter, useParams } from 'react-router-dom';
 import { QueryClientProvider } from '@tanstack/react-query';
 import { Music4 } from 'lucide-react';
@@ -25,6 +25,7 @@ import { Toaster } from '@/components/ui/toaster';
 import { registerAppRouter, useRoute, navigate, matchPath, normalizePath } from '@/lib/router';
 import { useAuthStore } from '@/stores/auth';
 import { usePlayerStore } from '@/stores/player';
+import { isPublicLanding } from '@/lib/public-landing';
 import { useGenerationReconciliation } from '@/hooks';
 import { AppShell } from '@/components/layout/AppShell';
 import { ViewErrorBoundary } from '@/components/common/ErrorBoundary';
@@ -198,17 +199,41 @@ function NotFound() {
 
 /* ── Vistas (carga diferida por ruta) ──────────────────── */
 
+/* La landing pública (a pantalla completa, sin la navegación de la app: ver AppShell) se carga bajo demanda: quien tiene sesión no descarga
+   su código, su CSS ni GSAP. */
+const LandingView = lazy(async () => ({ default: (await import('@/features/landing/LandingView')).LandingView }));
+
 const homeRoute = {
   lazy: async () => {
-    const { HomeView, LandingView } = await import('@/features/home/views');
+    const { HomeView } = await import('@/features/home/views');
     return {
       Component: function HomeRoute() {
         const user = useAuthStore((s) => s.user);
-        return user ? <HomeView /> : <LandingView />;
+        const status = useAuthStore((s) => s.status);
+        const sessionRecovering = useAuthStore((s) => s.sessionRecovering);
+        if (user) return <HomeView />;
+        /* Sólo un invitado confirmado ve la landing (mismo predicado que el shell). Una sesión guardada que se recupera tras un error temporal
+           ve el estado de carga, nunca la landing ni el inicio. */
+        if (isPublicLanding({ path: '/', user, status, sessionRecovering })) {
+          return (
+            <Suspense fallback={<LandingFallback />}>
+              <LandingView />
+            </Suspense>
+          );
+        }
+        return <LandingFallback />;
       },
     };
   },
 };
+
+function LandingFallback() {
+  return (
+    <div className="flex flex-1 items-center justify-center" aria-busy="true">
+      <span className="h-10 w-10 animate-spin rounded-full border-2 border-amber border-t-transparent" aria-hidden />
+    </div>
+  );
+}
 
 /** Login / registro: si ya hay sesión, vuelve al inicio. */
 const guestOnly = (name: 'LoginView' | 'RegisterView') => ({
