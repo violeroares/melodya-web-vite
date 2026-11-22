@@ -191,11 +191,17 @@ const STRUCTURE_PRESETS = [
   },
 ];
 
+/** `id` viaja tal cual en `language` (POST /assistant/lyrics, máx. 20 caracteres). Los cuatro primeros conservan su valor histórico;
+ *  los nuevos usan códigos normalizados, que el backend reconoce junto con los nombres. */
 const LANGUAGES = [
   { id: 'español', label: 'Español' },
   { id: 'español rioplatense', label: 'Español (rioplatense)' },
   { id: 'inglés', label: 'Inglés' },
   { id: 'portugués', label: 'Portugués' },
+  { id: 'fr', label: 'Francés' },
+  { id: 'it', label: 'Italiano' },
+  { id: 'de', label: 'Alemán' },
+  { id: 'ja', label: 'Japonés' },
 ];
 
 /** El backend recibe el estilo en `genre` (máx. 120 caracteres). */
