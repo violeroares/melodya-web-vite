@@ -1,3 +1,4 @@
+'use client';
 
 /**
  * MELODYA WEB — Header global: logo (mobile), saldo de fichas, avatar y menú
@@ -5,18 +6,21 @@
  */
 import React from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { LogOut, User as UserIcon, Zap, Settings2, Coins, Search, Bell, Sun, Moon, Monitor } from 'lucide-react';
+import { LogOut, User as UserIcon, Settings2, Search, Bell, Sun, Moon, Monitor } from 'lucide-react';
+import { CoinIcon } from '@/components/common/CoinIcon';
+import { SegmentedTabs } from '@/components/common/SegmentedTabs';
+import { ConfirmDialog } from '@/features/library/library-utils';
 import { useTheme } from '@/lib/theme';
 import { useRoute, navigate, Link } from '@/lib/router';
 import { useAuthStore } from '@/stores/auth';
 import { notificationsApi } from '@/lib/api';
-import { queryPollDelayMs, rateLimitRemainingMs } from '@/lib/api/resilience';
 import { useCredits, formatNumber } from '@/hooks';
 import { MelodyaLogo, AuthAvatar } from '@/components/common';
 import { openCommandPalette } from '@/components/common/CommandPalette';
 import {
-  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuSeparator, DropdownMenuTrigger,
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import { queryPollDelayMs, rateLimitRemainingMs } from '@/lib/api/resilience';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Button } from '@/components/ui/button';
 import { HomeGreeting } from '@/features/home/HomeGreeting';
@@ -27,7 +31,10 @@ export function Header() {
   const user = useAuthStore((s) => s.user);
   const status = useAuthStore((s) => s.status);
   const logout = useAuthStore((s) => s.logout);
+  const [confirmLogout, setConfirmLogout] = React.useState(false);
   const { data: credits, isLoading } = useCredits();
+  /* Sesión guardada en recuperación (error temporal): no es un invitado, así que no se ofrece Ingresar / Crear cuenta. */
+  const recovering = useAuthStore((s) => s.sessionRecovering);
   const isGuest = status === 'guest';
   const balance = credits?.balance;
   /* El saludo del inicio solo existe con sesión: los invitados ven la landing. */
@@ -40,9 +47,10 @@ export function Header() {
     queryKey: ['notifications', 'unread-count'],
     queryFn: () => notificationsApi.unreadCount(),
     enabled: !isGuest,
-    /* 30 s normales; con error, backoff (≥ Retry-After si hubo 429) en vez de insistir cada 30 s. */
+    /* Periodo normal 30 s; ante error, backoff; ante 429, no antes de Retry-After / del fin de la pausa de la API general. React Query no solapa
+       consultas ni sondea con la pestaña oculta. */
     refetchInterval: (query) => queryPollDelayMs(query, 30_000),
-    /* Al volver a la pestaña se actualiza, salvo durante una pausa por 429 de la API general (se retoma al terminar). */
+    /* Al volver a la pestaña se actualiza, salvo durante una pausa por 429 (se retoma al terminar). */
     refetchOnWindowFocus: () => rateLimitRemainingMs('api') === 0,
   });
   const unreadCount = unreadData?.count;
@@ -98,7 +106,7 @@ export function Header() {
               className="border-gold bg-gold/15 px-4 text-foreground hover:bg-gold/25 md:hidden"
               aria-label={`Saldo: ${credits?.balance ?? 0} fichas. Ver planes.`}
             >
-              <Zap className="h-4 w-4 text-lyric-tag" aria-hidden />
+              <CoinIcon className="h-4 w-4 text-lyric-tag" aria-hidden />
               <span key={`bal-${balance ?? 'x'}`} className="balance-bump inline-flex font-bold tabular-nums">
                 {isLoading ? <Skeleton className="inline-block h-3.5 w-8" /> : formatNumber(credits?.balance ?? 0)}
               </span>
@@ -106,7 +114,7 @@ export function Header() {
             </Button>
           )}
 
-          {isGuest ? (
+          {isGuest && recovering ? null : isGuest ? (
             <>
               <Button variant="ghost" size="sm" className="rounded-full" onClick={() => navigate('/login')}>
                 Ingresar
@@ -122,47 +130,63 @@ export function Header() {
                   <AuthAvatar src={user?.avatarUrl} name={user?.name ?? 'M'} className="h-9 w-9" fallbackClassName="text-xs" />
                 </button>
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-56 rounded-[20px]">
-                <DropdownMenuLabel className="font-normal">
-                  <p className="truncate text-sm font-semibold">{user?.name}</p>
-                  <p className="truncate text-xs text-muted-foreground">{user?.email}</p>
-                </DropdownMenuLabel>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem onClick={() => navigate('/profile')} className="cursor-pointer rounded-lg">
-                  <UserIcon className="mr-2 h-4 w-4" aria-hidden /> Mi perfil
+              {/* Menú de usuario con el estilo de las listas del sistema: tarjeta 28/28/14/14, filas altas con el ícono en círculo y el tema como selector de grupo */}
+              <DropdownMenuContent align="end" variant="list" className="w-64 overflow-hidden" sideOffset={8}>
+                <div className="border-b border-border/60 px-4 py-3.5">
+                  <div className="min-w-0">
+                    <p className="truncate font-display text-[15px] font-bold leading-tight text-foreground">{user?.name}</p>
+                    <p className="truncate text-[13px] text-muted-foreground">{user?.email}</p>
+                  </div>
+                </div>
+                <DropdownMenuItem onClick={() => navigate('/profile')} className="cursor-pointer">
+                  <UserIcon aria-hidden /> Mi perfil
                 </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => navigate('/plans')} className="cursor-pointer rounded-lg">
-                  <Coins className="mr-2 h-4 w-4" aria-hidden /> Planes y fichas
+                <DropdownMenuItem onClick={() => navigate('/plans')} className="cursor-pointer">
+                  <CoinIcon aria-hidden /> Planes y fichas
                 </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => navigate('/profile/settings')} className="cursor-pointer rounded-lg">
-                  <Settings2 className="mr-2 h-4 w-4" aria-hidden /> Configuración
+                <DropdownMenuItem onClick={() => navigate('/profile/settings')} className="cursor-pointer">
+                  <Settings2 aria-hidden /> Configuración
                 </DropdownMenuItem>
-                <DropdownMenuSeparator />
                 {/* Tema: claro, oscuro o el del sistema (por defecto) */}
-                <DropdownMenuLabel className="text-xs font-bold uppercase tracking-[0.12em] text-label">Tema</DropdownMenuLabel>
-                <DropdownMenuRadioGroup value={theme ?? 'system'} onValueChange={setTheme}>
-                  <DropdownMenuRadioItem value="light" className="cursor-pointer rounded-lg py-2.5">
-                    <Sun className="mr-2 h-4 w-4" aria-hidden /> Claro
-                  </DropdownMenuRadioItem>
-                  <DropdownMenuRadioItem value="dark" className="cursor-pointer rounded-lg py-2.5">
-                    <Moon className="mr-2 h-4 w-4" aria-hidden /> Oscuro
-                  </DropdownMenuRadioItem>
-                  <DropdownMenuRadioItem value="system" className="cursor-pointer rounded-lg py-2.5">
-                    <Monitor className="mr-2 h-4 w-4" aria-hidden /> Sistema
-                  </DropdownMenuRadioItem>
-                </DropdownMenuRadioGroup>
-                <DropdownMenuSeparator />
+                <div className="space-y-2.5 border-b border-border/60 px-3.5 py-3">
+                  <p className="flex items-center gap-2.5 text-xs font-bold uppercase tracking-[0.12em] text-label">
+                    <span aria-hidden className="size-[5px] shrink-0 rounded-full bg-[var(--m-accent)]" />
+                    Color de tema
+                  </p>
+                  <SegmentedTabs
+                    ariaLabel="Tema de la aplicación"
+                    iconOnly
+                    value={(theme ?? 'system') as 'light' | 'dark' | 'system'}
+                    onChange={setTheme}
+                    tabs={[
+                      { key: 'light', label: 'Claro', icon: Sun },
+                      { key: 'dark', label: 'Oscuro', icon: Moon },
+                      { key: 'system', label: 'Sistema', icon: Monitor },
+                    ]}
+                  />
+                </div>
                 <DropdownMenuItem
-                  onClick={() => void logout()}
-                  className="cursor-pointer rounded-lg text-destructive focus:text-destructive"
+                  onClick={() => setConfirmLogout(true)}
+                  className="cursor-pointer text-destructive focus:text-destructive [&&[data-slot]>svg]:border-primary! [&&[data-slot]>svg]:bg-primary [&&[data-slot]>svg]:text-[#131C33]!"
                 >
-                  <LogOut className="mr-2 h-4 w-4" aria-hidden /> Cerrar sesión
+                  <LogOut aria-hidden /> Cerrar sesión
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
           )}
         </div>
       </div>
+      <ConfirmDialog
+        open={confirmLogout}
+        onOpenChange={setConfirmLogout}
+        title="¿Cerrar sesión?"
+        description="Salís de tu cuenta en este dispositivo. Tus canciones quedan guardadas."
+        actionLabel="Cerrar sesión"
+        onConfirm={() => {
+          setConfirmLogout(false);
+          void logout();
+        }}
+      />
     </header>
   );
 }

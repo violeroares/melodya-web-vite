@@ -1,3 +1,4 @@
+'use client';
 
 /**
  * MELODYA WEB — Navegación inferior mobile con botón central "Crear"
@@ -7,7 +8,8 @@
  * el reproductor).
  */
 import React from 'react';
-import { Home, Library, Users, Plus, User as UserIcon, Zap } from 'lucide-react';
+import { Home, Library, Users, Plus, User as UserIcon } from 'lucide-react';
+import { CoinIcon } from '@/components/common/CoinIcon';
 import { navigate, useRoute } from '@/lib/router';
 import { useAuthStore } from '@/stores/auth';
 import { usePlayerStore } from '@/stores/player';
@@ -24,7 +26,7 @@ const TABS = [
 /* Invitados: la pestaña Biblioteca requiere sesión → la reemplazamos por
  * Planes (pública) para no dejar un tab muerto (misma grilla de 5). */
 const GUEST_TABS = TABS.map((t) =>
-  t.to === '/library' ? { to: '/plans', label: 'Planes', icon: Zap } : t,
+  t.to === '/library' ? { to: '/plans', label: 'Planes', icon: CoinIcon } : t,
 );
 
 export function BottomNav() {
@@ -40,14 +42,15 @@ export function BottomNav() {
   return (
     <nav
       aria-label="Navegación inferior"
-      className="fixed bottom-[max(0.5rem,env(safe-area-inset-bottom))] left-0 right-4 z-50 rounded-r-[31px] bg-voice text-on-voice md:hidden"
+      /* Barra del diseño final (MelodyaBottomBar): ancho completo, fondo de pantalla y línea fina arriba; la opción activa sube en un círculo naranja */
+      className="fixed inset-x-0 bottom-0 z-50 border-t border-[var(--m-faint)] bg-background pb-[max(0.5rem,env(safe-area-inset-bottom))] text-foreground md:hidden"
     >
       {/* Mini now-playing: hilo de progreso del tema en curso sobre el nav */}
       {track && (
         <div
           aria-hidden
           className={cn(
-            'absolute inset-x-0 top-0 h-[3px] origin-left rounded-tr-full bg-gold transition-transform duration-300',
+            'absolute inset-x-0 -top-px h-[3px] origin-left bg-gold transition-transform duration-300',
             radioMode && 'radio-thread'
           )}
           style={{ transform: `scaleX(${progress})` }}
@@ -65,17 +68,17 @@ export function BottomNav() {
               onClick={() => navigate(target)}
               aria-label={tab.to === '__create__' ? 'Crear canción' : undefined}
               aria-current={active ? 'page' : undefined}
-              className="relative flex min-h-[56px] flex-col items-center justify-center gap-1 py-2 focus-visible:outline-2 focus-visible:outline-on-voice"
+              className="relative flex min-h-[56px] flex-col items-center justify-center gap-1 py-2 focus-visible:outline-2 focus-visible:outline-foreground"
             >
               <span
                 className={cn(
                   'flex size-7 items-center justify-center rounded-full transition-all',
-                  active ? '-mt-5 size-11 bg-primary text-primary-foreground ring-4 ring-background' : 'text-on-voice/80'
+                  active ? '-mt-5 size-11 bg-primary text-primary-foreground ring-4 ring-background' : 'text-[var(--m-foreground-secondary)]'
                 )}
               >
                 <Icon className="h-5 w-5" aria-hidden />
               </span>
-              <span className={cn('text-[11px] transition-colors', active ? 'font-bold text-on-voice' : 'font-medium text-on-voice/80')}>
+              <span className={cn('text-[11px] transition-colors', active ? 'font-bold text-foreground' : 'font-medium text-[var(--m-foreground-secondary)]')}>
                 {tab.label}
               </span>
             </button>

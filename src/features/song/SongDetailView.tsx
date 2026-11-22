@@ -1,3 +1,4 @@
+'use client';
 
 /**
  * MELODYA WEB — SongDetailView: detalle de canción propia (ruta /songs/:id).
@@ -23,14 +24,12 @@ import {
   Upload, UserCheck, UserPlus, Users, X,
 } from 'lucide-react';
 import { communityApi, generationApi, profileApi, projectsApi, songsApi } from '@/lib/api';
-import { queryPollDelayMs } from '@/lib/api/resilience';
 import { apiFileUrl } from '@/lib/api/client';
 import { Link, goBack, navigate, useRoute } from '@/lib/router';
 import { toUserMessage } from '@/lib/errors';
 import { COMMENT_CHECKING_DELAY_MS, canSubmitComment, classifyCommentFailure } from '@/lib/comment-moderation';
 import { cn } from '@/lib/utils';
 import { shareContent } from '@/lib/share';
-import { songUrl, songPath } from '@/lib/links';
 import { downloadSongAudio, type DownloadFormat } from '@/lib/song-download';
 import { useDownloadState, useEntitlements } from '@/hooks/use-capabilities';
 import { usePlanGate } from '@/hooks/use-plan-gate';
@@ -59,6 +58,7 @@ import { WavMenuItem } from '@/features/song/WavMenuItem';
 import { EditSongDetailsDialog } from '@/features/song/EditSongDetailsDialog';
 import { restoreInvalidationKeys, shouldFallbackToCommunity, songDetailAccess } from '@/features/song/trashed-song';
 import { RemixMenu } from '@/features/song/RemixMenu';
+import { RemixShortcutButton } from '@/features/song/RemixShortcutButton';
 import { RemixIcon } from '@/features/song/RemixIcon';
 import { RemixAttribution } from '@/features/song/RemixAttribution';
 import { remixMenuState } from '@/features/creator/remix-source';
@@ -66,7 +66,9 @@ import { customStyleSummary, derivedStyleHint, hasText } from '@/features/song/s
 import { ReportDialog, type ReportTarget } from '@/features/community/ReportDialog';
 import { useCommunityReaction } from '@/features/community/CommunityView';
 import { CommunitySongSection } from '@/features/community/CommunitySongSection';
-import { LIST_MENU_COMFORTABLE_MOBILE } from '@/features/library/library-utils';
+import { ConfirmDialog, LIST_MENU_COMFORTABLE_MOBILE } from '@/features/library/library-utils';
+import { queryPollDelayMs } from '@/lib/api/resilience';
+import { songUrl, songPath } from '@/lib/links';
 import type { CommunitySongDetail, Generation, Paginated, Project, Song, SongComment } from '@/types';
 
 /* ── helpers ── */
@@ -394,6 +396,8 @@ function CommentsSection({
   }, [sending, submittedAt]);
   const checking = sending && checkingFor === submittedAt; // atado a ESTE envío: un envío nuevo vuelve a esperar el retardo
 
+  /* Pide confirmación antes de eliminar un comentario o una respuesta */
+  const [commentToDelete, setCommentToDelete] = useState<{ id: string; name: string } | null>(null);
   const removeMutation = useMutation({
     mutationFn: (commentId: string) => songsApi.deleteComment(song.id, commentId),
     onSuccess: () => {
@@ -496,6 +500,19 @@ function CommentsSection({
 
   return (
     <section className="space-y-4" aria-label="Comentarios de la comunidad">
+      <ConfirmDialog
+        open={commentToDelete !== null}
+        onOpenChange={(o) => {
+          if (!o) setCommentToDelete(null);
+        }}
+        title="¿Eliminar el comentario?"
+        description={commentToDelete ? `Se borra el comentario de ${commentToDelete.name}. No se puede deshacer.` : ''}
+        actionLabel="Eliminar"
+        pending={removeMutation.isPending}
+        onConfirm={() => {
+          if (commentToDelete) removeMutation.mutate(commentToDelete.id, { onSettled: () => setCommentToDelete(null) });
+        }}
+      />
       <SectionHeader
         title="Comentarios"
         subtitle={
@@ -617,7 +634,7 @@ function CommentsSection({
                         {canDelete && (
                           <button
                             type="button"
-                            onClick={() => removeMutation.mutate(c.id)}
+                            onClick={() => setCommentToDelete({ id: c.id, name: c.author.name })}
                             disabled={removeMutation.isPending}
                             className="ml-auto flex size-7 shrink-0 items-center justify-center rounded-full border-[1.5px] border-line text-muted-foreground transition-colors hover:border-destructive hover:bg-destructive/10 hover:text-destructive focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                             aria-label={`Eliminar comentario de ${c.author.name}`}
@@ -712,7 +729,7 @@ function CommentsSection({
                                     {canDeleteReply && (
                                       <button
                                         type="button"
-                                        onClick={() => removeMutation.mutate(r.id)}
+                                        onClick={() => setCommentToDelete({ id: r.id, name: r.author.name })}
                                         disabled={removeMutation.isPending}
                                         className="ml-auto flex size-7 shrink-0 items-center justify-center rounded-full border-[1.5px] border-line text-muted-foreground transition-colors hover:border-destructive hover:bg-destructive/10 hover:text-destructive focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                                         aria-label={`Eliminar comentario de ${r.author.name}`}
@@ -850,6 +867,8 @@ export function SongDetailView({ songId }: { songId: string }) {
   });
   /* En la Papelera no se usa nada de Comunidad (ni lo que haya quedado en caché de antes). */
   const community = access.showCommunity ? (communityQuery.data ?? null) : null;
+  /* Autor que se muestra en la portada: el de la comunidad; en una canción propia sin datos de comunidad, el usuario actual. */
+  const coverAuthor: { id: string; name: string; avatarUrl: string | null; followersCount?: number } | null = community?.author ?? (isOwner && user ? { id: user.id, name: user.name, avatarUrl: user.avatarUrl ?? null } : null);
   const viewerLiked = community?.viewerReaction === 'LIKE';
   const viewerDisliked = community?.viewerReaction === 'DISLIKE';
   const likesCount = community?.likesCount ?? song?.likesCount ?? 0;
@@ -981,6 +1000,7 @@ export function SongDetailView({ songId }: { songId: string }) {
   };
 
   /* ── follow / unfollow del autor (POST / DELETE /users/:id/follow) ── */
+  const [confirmUnfollow, setConfirmUnfollow] = useState(false);
   const followMutation = useMutation({
     mutationFn: (vars: { userId: string; follow: boolean }) =>
       vars.follow ? profileApi.follow(vars.userId) : profileApi.unfollow(vars.userId),
@@ -1326,8 +1346,29 @@ export function SongDetailView({ songId }: { songId: string }) {
 
   /* ── datos derivados ── */
   const genre = currentVersion?.genre ? cleanTag(currentVersion.genre) : null;
-  const tags = (currentVersion?.tags ?? []).map(cleanTag).filter(Boolean);
+  /* Etiquetas sin repetir: ni entre ellas ni el género (sin distinguir mayúsculas), p. ej. «Rock» como género y como etiqueta */
+  const tags = (() => {
+    const seen = new Set((genre?.split(',') ?? []).map((g) => cleanTag(g.trim()).toLowerCase()).filter(Boolean));
+    if (genre) seen.add(genre.toLowerCase());
+    return (currentVersion?.tags ?? []).map(cleanTag).filter((t) => {
+      const k = t.toLowerCase();
+      if (!k || seen.has(k)) return false;
+      seen.add(k);
+      return true;
+    });
+  })();
   const styleSummary = customStyleSummary(song); // «Editar detalles»: null ⇒ se usan los estilos derivados (genre/tags)
+  /* Chips de estilo: el resumen del dueño se parte por comas; sin resumen, género(s) + etiquetas. Sin repetidos (sin distinguir mayúsculas). */
+  const styleChips = (() => {
+    const raw = styleSummary ? styleSummary.split(',') : [...(genre?.split(',') ?? []), ...tags];
+    const seen = new Set<string>();
+    return raw.map((t) => cleanTag(t.trim())).filter((t) => {
+      const k = t.toLowerCase();
+      if (!k || seen.has(k)) return false;
+      seen.add(k);
+      return true;
+    });
+  })();
   const isCurrentSongPlaying = Boolean(isPlaying && currentTrack?.id === song.id);
   const isCurrentVersionPlaying = Boolean(isPlaying && currentVersion?.audioUrl && currentTrack?.audioUrl === resolveAudioUrl(currentVersion.audioUrl));
   /* Dueño: estilos pedidos al generar. Resto: lo único público del detalle de comunidad (género + etiquetas). */
@@ -1648,7 +1689,7 @@ export function SongDetailView({ songId }: { songId: string }) {
           {/* El título y el lápiz fluyen como texto en línea: el lápiz queda siempre pegado al final del título, aunque este ocupe varias líneas */}
           <div className="min-w-0 break-words">
             {isCurrentSongPlaying && <EqualizerBars className="mr-2 inline-flex h-4 shrink-0 align-middle" />}
-            <h1 className="inline font-display text-[22px] leading-[1.1] font-bold @xl:text-[28px] @3xl:text-[32px] @5xl:text-[40px]">{song.title}</h1>
+            <h1 className="inline font-display text-[26px] leading-[1.1] font-bold @xl:text-[28px] @3xl:text-[32px] @5xl:text-[40px]">{song.title}</h1>
             {/* Lápiz (solo canción propia): abre «Editar detalles», donde se cambia el nombre */}
             {access.canModify && (
               <>
@@ -1666,9 +1707,65 @@ export function SongDetailView({ songId }: { songId: string }) {
             )}
           </div>
 
+          {/* Creador (en las propias, el usuario actual): debajo del nombre de la canción, sin avatar: «Nombre · N seguidores · Seguir» */}
+          {coverAuthor && (
+            <div className="-mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-2 text-sm">
+              <Link
+                to={`/user/${encodeURIComponent(coverAuthor.id)}`}
+                aria-label={`Ver perfil de ${coverAuthor.name}`}
+                className="min-w-0 max-w-full truncate text-[15px] font-bold text-foreground transition-colors hover:text-label"
+              >
+                {coverAuthor.name}
+              </Link>
+              {coverAuthor.followersCount != null && (
+                <>
+                  <span aria-hidden className="text-muted-foreground">·</span>
+                  <span className="text-muted-foreground">
+                    {formatNumber(coverAuthor.followersCount)} {coverAuthor.followersCount === 1 ? 'seguidor' : 'seguidores'}
+                  </span>
+                </>
+              )}
+              {community && user?.id !== coverAuthor.id && (
+                <>
+                  <span aria-hidden className="text-muted-foreground">·</span>
+                  <button
+                    type="button"
+                    className={cn('shrink-0 rounded-full text-[15px] font-bold transition-colors hover:text-label focus-visible:outline-2 focus-visible:outline-foreground disabled:opacity-60', community.viewerIsFollowing ? 'text-muted-foreground' : 'text-foreground')}
+                    aria-label={community.viewerIsFollowing ? `Dejar de seguir a ${coverAuthor.name}` : `Seguir a ${coverAuthor.name}`}
+                    disabled={followMutation.isPending}
+                    onClick={() => {
+                      if (!guard('Ingresá para seguir al creador', 'Creá tu cuenta para seguir a otros melodiosos.')) return;
+                      // Dejar de seguir pide confirmación; seguir es directo.
+                      if (community.viewerIsFollowing) setConfirmUnfollow(true);
+                      else followMutation.mutate({ userId: coverAuthor.id, follow: true });
+                    }}
+                  >
+                    {community.viewerIsFollowing ? 'Siguiendo' : 'Seguir'}
+                  </button>
+                </>
+              )}
+              {community && (
+                <ConfirmDialog
+                  open={confirmUnfollow}
+                  onOpenChange={setConfirmUnfollow}
+                  title={`¿Dejar de seguir a ${coverAuthor.name}?`}
+                  description="Su contenido deja de aparecer en tu feed de seguidos. Podés volver a seguirlo cuando quieras."
+                  actionLabel="Dejar de seguir"
+                  pending={followMutation.isPending}
+                  onConfirm={() => {
+                    setConfirmUnfollow(false);
+                    followMutation.mutate({ userId: coverAuthor.id, follow: false });
+                  }}
+                />
+              )}
+            </div>
+          )}
+
           {/* versión, duración y proyecto */}
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="mt-2 flex flex-wrap items-center gap-2">
             {reactionButtons}
+            {/* Atajo de Remix (mismas reglas de visibilidad que la entrada del menú de tres puntos) */}
+            {!isTrashed && remixMenuState({ isOwner, signedIn: Boolean(user), visibility: song.visibility, allowRemix: song.allowRemix, hasAudio: Boolean(currentVersion?.audioUrl) }).visible && (<RemixShortcutButton songId={song.id} title={song.title} />)}
             {queueButtons}
             {isOwner && currentVersion && (
               <span className="rounded-full bg-foreground/10 px-3 py-1 text-xs font-medium text-foreground">Versión v{currentVersion.versionNumber}</span>
@@ -1689,140 +1786,20 @@ export function SongDetailView({ songId }: { songId: string }) {
 
           <div className="flex min-w-0 flex-wrap items-center gap-2">
             {/* Resumen de estilos del dueño («Editar detalles»); sin resumen propio se conserva la presentación derivada de la versión (género + etiquetas). */}
-            {styleSummary ? (
-              <p className="min-w-0 break-words text-sm font-medium text-foreground">{styleSummary}</p>
-            ) : (
-              <>
-                {genre && <Chip className="font-bold">{genre}</Chip>}
-                {tags.map((t) => (
-                  <Chip key={t}>{t}</Chip>
-                ))}
-              </>
-            )}
+            {/* Todo como chips separados: el resumen del dueño («Pop, Punk, Alternative») o el género y las etiquetas, sin repetir */}
+            {styleChips.map((c, i) => (
+              <Chip key={c} className={cn('h-8 px-3 text-xs', i === 0 && 'font-bold')}>{c}</Chip>
+            ))}
           </div>
 
 
           </div>
-        {/* Versiones: pegadas abajo, a la altura del borde inferior de la portada */}
-        <div className="flex flex-col gap-3 @3xl:mt-auto">
-        {/* ── Descripción (canción de otra persona): sin contenedor, en el lugar donde el dueño ve sus versiones ── */}
-        {!isOwner && hasText(song.description) && (
-          <p className="whitespace-pre-line break-words text-sm leading-relaxed text-muted-foreground" aria-label="Descripción de la canción">
+        {/* Descripción: texto simple pegado a los chips de géneros */}
+        {hasText(song.description) && (
+          <p className="mt-1 whitespace-pre-line break-words text-sm leading-relaxed text-muted-foreground" aria-label="Descripción de la canción">
             {song.description.trim()}
           </p>
         )}
-        {/* ── Versiones (dueño): debajo de versión y duración, a la derecha de la portada ── */}
-        {isOwner && (
-          <section className="@container mt-6 space-y-3" aria-label="Versiones de la canción">
-            <SectionHeader
-              title={
-              <>
-                Versiones
-                {versions.length > 0 && (
-                  <span className="text-sm font-normal tracking-normal text-muted-foreground normal-case">
-                    <span aria-hidden className="mr-2">·</span>
-                    {versions.length} {versions.length === 1 ? 'versión' : 'versiones'}
-                  </span>
-                )}
-              </>
-}
-            />
-            {/* Una cápsula por versión, como las de «Seguí creando» del inicio: pegadas al borde izquierdo, tinte terracota */}
-            <div className="grid grid-cols-1 gap-3 min-[1060px]:max-[1120px]:grid-cols-2 @md:grid-cols-2">
-                {versionsQuery.isLoading ? (
-                  <LoadingRows count={2} />
-                ) : versionsQuery.isError ? (
-                  <ErrorState message={toUserMessage(versionsQuery.error)} onRetry={() => void versionsQuery.refetch()} />
-                ) : versions.length === 0 ? (
-                  <p className="py-6 text-center text-sm text-muted-foreground">Todavía no hay versiones de esta canción.</p>
-                ) : (
-                  versions.map((v) => {
-                    const active = song.currentVersionId === v.id;
-                    const playing = Boolean(isPlaying && v.audioUrl && currentTrack?.audioUrl === resolveAudioUrl(v.audioUrl));
-                    return (
-                      <div
-                        key={v.id}
-                        className="flex min-h-[76px] min-w-0 items-center gap-2 rounded-[40px] bg-[var(--m-capsule-tint)] py-3 pr-3 pl-3 @[34rem]:gap-2.5"
-                      >
-                        {/* Igual que el botón de las filas de «De la comunidad» del inicio: círculo con borde, solo el ícono */}
-                        <button
-                          type="button"
-                          onClick={() => playVersion(v)}
-                          disabled={!v.audioUrl}
-                          aria-label={playing ? `Pausar versión ${v.versionNumber}` : `Escuchar versión ${v.versionNumber}`}
-                          title={playing ? 'Pausar' : 'Escuchar'}
-                          className={`flex size-9 shrink-0 items-center justify-center rounded-full border-[1.5px] transition-colors focus-visible:outline-2 focus-visible:outline-foreground disabled:cursor-not-allowed disabled:opacity-50 @[34rem]:size-11 ${
-                            playing ? 'border-primary bg-primary text-primary-foreground' : 'border-line text-foreground hover:border-[#A5390A] hover:bg-[#A5390A]/40'
-                          }`}
-                        >
-                          {playing ? <Pause className="h-4 w-4 fill-current" aria-hidden /> : <Play className="h-4 w-4 translate-x-px fill-current" aria-hidden />}
-                        </button>
-                        <div className="min-w-0 flex-1">
-                          <span className="block whitespace-nowrap text-sm font-semibold">Versión {v.versionNumber}</span>
-                          <p className="mt-0.5 text-xs text-muted-foreground">
-                            {formatRelative(v.createdAt)}
-                              {v.durationSec != null && <> · {formatDuration(v.durationSec)}</>}
-                          </p>
-                          {wavStatusText(wavFlow.phaseOf(v.id)) && (
-                            <p role="status" aria-live="polite" data-testid="wav-status" className="mt-0.5 flex items-center gap-1.5 text-xs text-[#A5390A]">
-                              <Loader2 className="h-3 w-3 animate-spin" aria-hidden /> {wavStatusText(wavFlow.phaseOf(v.id))}
-                            </p>
-                          )}
-                        </div>
-                        {/* Descarga de ESTA versión (MP3 / WAV): corresponde a la fila elegida, no a la versión activa. */}
-                        {v.audioUrl && access.canDownload && (
-                          <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
-                              <button
-                                type="button"
-                                aria-label={wavFlow.phaseOf(v.id) ? `Versión ${v.versionNumber}: preparando el WAV` : `Descargar la versión ${v.versionNumber}`}
-                                aria-busy={wavFlow.phaseOf(v.id) ? true : undefined}
-                                title={wavFlow.phaseOf(v.id) ? 'Preparando el WAV de esta versión' : 'Descargar esta versión'}
-                                className="flex size-8 shrink-0 items-center justify-center rounded-full border-[1.5px] border-line text-foreground transition-colors min-[1060px]:max-[1120px]:hidden @[34rem]:size-9 hover:border-[#A5390A] hover:bg-[#A5390A]/40 focus-visible:outline-2 focus-visible:outline-foreground"
-                              >
-                                {wavFlow.phaseOf(v.id) ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <Download className="h-4 w-4" aria-hidden />}
-                              </button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent align="end">
-                              <DropdownMenuItem disabled={downloading || (!downloadState.allowed && !downloadGate.locked)} onClick={() => void onDownload('mp3', v)} title={downloadState.reason ?? downloadState.hint ?? 'Baja el MP3 de esta versión'} className={downloadGate.locked ? 'opacity-90' : undefined}>
-                                <Download className="h-4 w-4" aria-hidden />
-                                Descargar MP3
-                                <RequiredPlanBadge capability="DOWNLOAD_AUDIO" className="ml-auto" />
-                              </DropdownMenuItem>
-                              <WavMenuItem state={wavStateFor(v.id)} onSelect={() => onWav(v)} />
-                            </DropdownMenuContent>
-                          </DropdownMenu>
-                        )}
-                        {/* Casillero como el «Automático» de Creatividad: texto + círculo dorado; relleno cuando la versión es la activa */}
-                        <button
-                          type="button"
-                          role="checkbox"
-                          aria-checked={active}
-                          aria-label={active ? `Versión ${v.versionNumber} activa` : `Hacer activa la versión ${v.versionNumber}`}
-                          title={active ? 'Versión activa' : 'Hacer activa'}
-                          onClick={() => !active && access.canModify && activeVersionMutation.mutate(v.id)}
-                          disabled={!access.canModify || (!active && activeVersionMutation.isPending)}
-                          className={`flex shrink-0 items-center gap-2 text-xs font-medium focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground disabled:cursor-not-allowed disabled:opacity-60 ${active ? 'cursor-default' : ''}`}
-                        >
-                          <span
-                            aria-hidden
-                            className={`flex size-7 shrink-0 items-center justify-center rounded-full border-[1.5px] border-gold transition-colors @[34rem]:size-8 ${active ? 'bg-gold text-[#131C33]' : 'bg-transparent text-gold'}`}
-                          >
-                            {activeVersionMutation.isPending && activeVersionMutation.variables === v.id ? (
-                              <Loader2 className="h-4 w-4 animate-spin" />
-                            ) : (
-                              <Check className={`h-4 w-4 ${active ? '' : 'opacity-40'}`} strokeWidth={3} />
-                            )}
-                          </span>
-                        </button>
-                      </div>
-                    );
-                  })
-                )}
-              </div>
-          </section>
-        )}
-        </div>
 
         </div>
       </section>
@@ -1830,15 +1807,6 @@ export function SongDetailView({ songId }: { songId: string }) {
 
       {/* ── Remix: «Hecho a partir de» (atribución permanente al origen directo). El contador de remixes va con los demás contadores. ── */}
       <RemixAttribution origin={song.origin} />
-
-      {/* ── Descripción de la canción («Editar detalles»): bloque discreto, solo si existe (también en el detalle público) ── */}
-      {isOwner && hasText(song.description) && (
-        <section aria-label="Descripción de la canción">
-          <p className="max-w-3xl whitespace-pre-line break-words rounded-2xl border border-border/70 bg-surface-2/40 px-4 py-3 text-sm leading-relaxed text-muted-foreground">
-            {song.description.trim()}
-          </p>
-        </section>
-      )}
 
       {/* Confirmación de borrado (se abre desde el menú de tres puntos) */}
       <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
@@ -1852,7 +1820,7 @@ export function SongDetailView({ songId }: { songId: string }) {
                 <AlertDialogFooter>
                   <AlertDialogCancel className="rounded-full">Cancelar</AlertDialogCancel>
                   <AlertDialogAction
-                    className="rounded-full bg-destructive text-background hover:bg-destructive/90"
+                    className="rounded-full bg-primary text-primary-foreground hover:bg-primary/90"
                     onClick={(e) => {
                       e.preventDefault();
                       deleteMutation.mutate();
@@ -1903,50 +1871,6 @@ export function SongDetailView({ songId }: { songId: string }) {
             <Skeleton className="h-44 rounded-cover" />
           ) : gen || !isOwner ? (
             <>
-            {/* Creador (canciones de otras personas): arriba de «Estilo» */}
-          {access.showCommunity && !isOwner && community && (
-            <div className="@container flex flex-wrap items-center gap-x-3 gap-y-3 rounded-3xl border-[1.5px] border-border bg-[var(--m-input)] px-4 py-3">
-              <Link
-                to={`/user/${encodeURIComponent(community.author.id)}`}
-                aria-label={`Ver perfil de ${community.author.name}`}
-                tabIndex={-1}
-                className="shrink-0 rounded-full border-2 border-gold p-[2px] transition-transform duration-200 ease-out hover:scale-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring motion-reduce:transition-none motion-reduce:hover:scale-100"
-              >
-                <AuthAvatar src={community.author.avatarUrl} name={community.author.name} className="h-10 w-10" />
-              </Link>
-              <div className="min-w-0 flex-1 basis-28">
-                <Link
-                  to={`/user/${encodeURIComponent(community.author.id)}`}
-                  aria-label={`Ver perfil de ${community.author.name}`}
-                  className="block max-w-full truncate text-left text-[17px] font-bold text-foreground transition-colors hover:text-amber-strong"
-                >
-                  {community.author.name}
-                </Link>
-                <p className="text-[13px] text-muted-foreground">{formatNumber(community.author.followersCount ?? 0)} seguidores</p>
-              </div>
-              {user?.id !== community.author.id && (
-                <Button
-                  variant="outline"
-                  className={cn('min-h-11 w-full rounded-3xl border-[1.5px] px-5 text-[15px] font-bold @[19rem]:w-auto', community.viewerIsFollowing ? 'border-selected bg-selected text-on-selected hover:bg-selected/90 hover:text-on-selected' : 'border-line bg-transparent text-foreground hover:bg-foreground/10')}
-                  aria-label={community.viewerIsFollowing ? `Dejar de seguir a ${community.author.name}` : `Seguir a ${community.author.name}`}
-                  disabled={followMutation.isPending}
-                  onClick={() => {
-                    if (!guard('Ingresá para seguir al creador', 'Creá tu cuenta para seguir a otros melodiosos.')) return;
-                    followMutation.mutate({ userId: community.author.id, follow: !community.viewerIsFollowing });
-                  }}
-                >
-                  {followMutation.isPending ? (
-                    <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
-                  ) : community.viewerIsFollowing ? (
-                    <UserCheck className="h-4 w-4" aria-hidden />
-                  ) : (
-                    <UserPlus className="h-4 w-4" aria-hidden />
-                  )}
-                  <span>{community.viewerIsFollowing ? 'Siguiendo' : 'Seguir'}</span>
-                </Button>
-              )}
-            </div>
-          )}
             {/* Info de generación (solo dueño): arriba de «Estilo» */}
             {genInfoCard}
             {(usedStyle.genres.length > 0 || usedStyle.description || usedStyle.vocal || usedStyle.excluded.length > 0) && (
@@ -2051,6 +1975,118 @@ export function SongDetailView({ songId }: { songId: string }) {
         )}
         </div>
       </div>
+
+      {/* ── Versiones (dueño): debajo de versión y duración, a la derecha de la portada ── */}
+      {isOwner && (
+        <section className="@container space-y-3" aria-label="Versiones de la canción">
+          <SectionHeader
+            title={
+            <>
+              Versiones
+              {versions.length > 0 && (
+                <span className="text-sm font-normal tracking-normal text-muted-foreground normal-case">
+                  <span aria-hidden className="mr-2">·</span>
+                  {versions.length} {versions.length === 1 ? 'versión' : 'versiones'}
+                </span>
+              )}
+            </>
+            }
+          />
+          {/* Una cápsula por versión, como las de «Seguí creando» del inicio: pegadas al borde izquierdo, tinte terracota */}
+          <div className="grid grid-cols-1 gap-3 min-[1060px]:max-[1120px]:grid-cols-2 @md:grid-cols-2">
+              {versionsQuery.isLoading ? (
+                <LoadingRows count={2} />
+              ) : versionsQuery.isError ? (
+                <ErrorState message={toUserMessage(versionsQuery.error)} onRetry={() => void versionsQuery.refetch()} />
+              ) : versions.length === 0 ? (
+                <p className="py-6 text-center text-sm text-muted-foreground">Todavía no hay versiones de esta canción.</p>
+              ) : (
+                versions.map((v) => {
+                  const active = song.currentVersionId === v.id;
+                  const playing = Boolean(isPlaying && v.audioUrl && currentTrack?.audioUrl === resolveAudioUrl(v.audioUrl));
+                  return (
+                    <div
+                      key={v.id}
+                      className="flex min-h-[76px] min-w-0 items-center gap-2 rounded-[40px] bg-[var(--m-capsule-tint)] py-3 pr-3 pl-3 @[34rem]:gap-2.5"
+                    >
+                      {/* Igual que el botón de las filas de «De la comunidad» del inicio: círculo con borde, solo el ícono */}
+                      <button
+                        type="button"
+                        onClick={() => playVersion(v)}
+                        disabled={!v.audioUrl}
+                        aria-label={playing ? `Pausar versión ${v.versionNumber}` : `Escuchar versión ${v.versionNumber}`}
+                        title={playing ? 'Pausar' : 'Escuchar'}
+                        className={`flex size-9 shrink-0 items-center justify-center rounded-full border-[1.5px] transition-colors focus-visible:outline-2 focus-visible:outline-foreground disabled:cursor-not-allowed disabled:opacity-50 disabled:border-transparent @[34rem]:size-11 ${
+                          playing ? 'border-primary bg-primary text-primary-foreground' : 'border-line text-foreground hover:border-[#A5390A] hover:bg-[#A5390A]/40'
+                        }`}
+                      >
+                        {playing ? <Pause className="h-4 w-4 fill-current" aria-hidden /> : <Play className="h-4 w-4 translate-x-px fill-current" aria-hidden />}
+                      </button>
+                      <div className="min-w-0 flex-1">
+                        <span className="block whitespace-nowrap text-sm font-semibold">Versión {v.versionNumber}</span>
+                        <p className="mt-0.5 text-xs text-muted-foreground">
+                          {formatRelative(v.createdAt)}
+                            {v.durationSec != null && <> · {formatDuration(v.durationSec)}</>}
+                        </p>
+                        {wavStatusText(wavFlow.phaseOf(v.id)) && (
+                          <p role="status" aria-live="polite" data-testid="wav-status" className="mt-0.5 flex items-center gap-1.5 text-xs text-[#A5390A]">
+                            <Loader2 className="h-3 w-3 animate-spin" aria-hidden /> {wavStatusText(wavFlow.phaseOf(v.id))}
+                          </p>
+                        )}
+                      </div>
+                      {/* Descarga de ESTA versión (MP3 / WAV): corresponde a la fila elegida, no a la versión activa. */}
+                      {v.audioUrl && access.canDownload && (
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <button
+                              type="button"
+                              aria-label={wavFlow.phaseOf(v.id) ? `Versión ${v.versionNumber}: preparando el WAV` : `Descargar la versión ${v.versionNumber}`}
+                              aria-busy={wavFlow.phaseOf(v.id) ? true : undefined}
+                              title={wavFlow.phaseOf(v.id) ? 'Preparando el WAV de esta versión' : 'Descargar esta versión'}
+                              className="flex size-8 shrink-0 items-center justify-center rounded-full border-[1.5px] border-line text-foreground transition-colors min-[1060px]:max-[1120px]:hidden @[34rem]:size-9 hover:border-[#A5390A] hover:bg-[#A5390A]/40 focus-visible:outline-2 focus-visible:outline-foreground"
+                            >
+                              {wavFlow.phaseOf(v.id) ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <Download className="h-4 w-4" aria-hidden />}
+                            </button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuItem disabled={downloading || (!downloadState.allowed && !downloadGate.locked)} onClick={() => void onDownload('mp3', v)} title={downloadState.reason ?? downloadState.hint ?? 'Baja el MP3 de esta versión'} className={downloadGate.locked ? 'opacity-90' : undefined}>
+                              <Download className="h-4 w-4" aria-hidden />
+                              Descargar MP3
+                              <RequiredPlanBadge capability="DOWNLOAD_AUDIO" className="ml-auto" />
+                            </DropdownMenuItem>
+                            <WavMenuItem state={wavStateFor(v.id)} onSelect={() => onWav(v)} />
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      )}
+                      {/* Casillero como el «Automático» de Creatividad: texto + círculo dorado; relleno cuando la versión es la activa */}
+                      <button
+                        type="button"
+                        role="checkbox"
+                        aria-checked={active}
+                        aria-label={active ? `Versión ${v.versionNumber} activa` : `Hacer activa la versión ${v.versionNumber}`}
+                        title={active ? 'Versión activa' : 'Hacer activa'}
+                        onClick={() => !active && access.canModify && activeVersionMutation.mutate(v.id)}
+                        disabled={!access.canModify || (!active && activeVersionMutation.isPending)}
+                        className={`flex shrink-0 items-center gap-2 text-xs font-medium focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground disabled:cursor-not-allowed disabled:opacity-60 ${active ? 'cursor-default' : ''}`}
+                      >
+                        <span
+                          aria-hidden
+                          className={`flex size-7 shrink-0 items-center justify-center rounded-full border-[1.5px] border-gold transition-colors @[34rem]:size-8 ${active ? 'bg-gold text-[#131C33]' : 'bg-transparent text-gold'}`}
+                        >
+                          {activeVersionMutation.isPending && activeVersionMutation.variables === v.id ? (
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                          ) : (
+                            <Check className={`h-4 w-4 ${active ? '' : 'opacity-40'}`} strokeWidth={3} />
+                          )}
+                        </span>
+                      </button>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+        </section>
+      )}
 
       {/* ── Comunidad: comentarios o invitación a publicar ── */}
       {access.showCommunity ? (

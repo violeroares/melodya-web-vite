@@ -1,3 +1,4 @@
+"use client"
 
 import * as React from "react"
 import * as DropdownMenuPrimitive from "@radix-ui/react-dropdown-menu"
@@ -31,24 +32,22 @@ function DropdownMenuTrigger({
 }
 
 /* Variante «list»: el menú de los tres puntos con el estilo de la lista de Perfil (design-V2): tarjeta de esquinas 28/28/14/14 con
-   borde de 1,5 px y filas altas, separadas por una línea fina, con el ícono en un círculo de borde fino. */
+   borde de 1,5 px y filas altas, separadas por una línea fina, con el ícono en un círculo de borde fino.
+   UNA sola medida para todos los menús y todos los anchos (sin versión «mobile» más chica): ancho mínimo 224 px, filas de 48 px,
+   letra de 14 px en semibold, círculo de 24 px con el ícono de 14 px y el mismo color para todos los íconos. */
 /* Las clases van completas (Tailwind no detecta nombres armados con plantillas). */
 const LIST_VARIANT = [
-  'min-w-52 rounded-[28px_28px_14px_14px] border-[1.5px] border-border bg-[var(--m-input)] p-0 py-1 shadow-xl max-sm:min-w-44',
-  '[&_[data-slot=dropdown-menu-item]]:h-11 [&_[data-slot=dropdown-menu-item]]:gap-2.5 [&_[data-slot=dropdown-menu-item]]:rounded-none [&_[data-slot=dropdown-menu-item]]:border-b [&_[data-slot=dropdown-menu-item]]:border-border/60 [&_[data-slot=dropdown-menu-item]]:px-3.5 [&_[data-slot=dropdown-menu-item]]:text-[13px] [&_[data-slot=dropdown-menu-item]]:font-semibold',
+  'min-w-56 max-w-[calc(100vw-2rem)] rounded-[28px_28px_14px_14px] border-[1.5px] border-border bg-[var(--m-input)] p-0 py-1 shadow-xl',
+  '[&_[data-slot=dropdown-menu-item]]:h-12 [&_[data-slot=dropdown-menu-item]]:gap-3 [&_[data-slot=dropdown-menu-item]]:rounded-none [&_[data-slot=dropdown-menu-item]]:border-b [&_[data-slot=dropdown-menu-item]]:border-border/60 [&_[data-slot=dropdown-menu-item]]:px-4 [&_[data-slot=dropdown-menu-item]]:text-[14px] [&_[data-slot=dropdown-menu-item]]:font-semibold',
   '[&_[data-slot=dropdown-menu-item]:last-child]:border-b-0 [&_[data-slot=dropdown-menu-separator]]:hidden',
   // sin el aro de foco global: el resaltado al pasar el mouse/teclado es solo el fondo de la fila
   '[&_[data-slot=dropdown-menu-item]]:outline-none! [&_[data-slot=dropdown-menu-item]]:focus-visible:outline-none!',
-  '[&_[data-slot=dropdown-menu-item]>svg]:box-content [&_[data-slot=dropdown-menu-item]>svg]:size-[12px]! [&_[data-slot=dropdown-menu-item]>svg]:rounded-full [&_[data-slot=dropdown-menu-item]>svg]:border-[1.5px] [&_[data-slot=dropdown-menu-item]>svg]:border-line [&_[data-slot=dropdown-menu-item]>svg]:p-[5px]',
-  // pantallas angostas: todo un poco más chico
-  'max-sm:[&_[data-slot=dropdown-menu-item]]:h-9 max-sm:[&_[data-slot=dropdown-menu-item]]:gap-2 max-sm:[&_[data-slot=dropdown-menu-item]]:px-3 max-sm:[&_[data-slot=dropdown-menu-item]]:text-xs',
-  'max-sm:[&_[data-slot=dropdown-menu-item]>svg]:size-[10px]! max-sm:[&_[data-slot=dropdown-menu-item]>svg]:p-1',
+  '[&_[data-slot=dropdown-menu-item]>svg]:box-content [&_[data-slot=dropdown-menu-item]>svg]:size-[14px]! [&_[data-slot=dropdown-menu-item]>svg]:rounded-full [&_[data-slot=dropdown-menu-item]>svg]:border-[1.5px] [&_[data-slot=dropdown-menu-item]>svg]:border-line [&_[data-slot=dropdown-menu-item]>svg]:p-[5px] [&_[data-slot=dropdown-menu-item]>svg]:text-foreground!',
   // Entrada con submenú (p. ej. «Remix»): MISMA fila que un ítem — alto, separador, texto y el ícono propio (el primer svg) en su círculo.
   // La flecha del submenú (último svg) queda sin círculo.
-  `[&_[data-slot=dropdown-menu-sub-trigger]]:h-11 [&_[data-slot=dropdown-menu-sub-trigger]]:gap-2.5 [&_[data-slot=dropdown-menu-sub-trigger]]:rounded-none [&_[data-slot=dropdown-menu-sub-trigger]]:border-b [&_[data-slot=dropdown-menu-sub-trigger]]:border-border/60 [&_[data-slot=dropdown-menu-sub-trigger]]:px-3.5 [&_[data-slot=dropdown-menu-sub-trigger]]:text-[13px] [&_[data-slot=dropdown-menu-sub-trigger]]:font-semibold`,
+  `[&_[data-slot=dropdown-menu-sub-trigger]]:h-12 [&_[data-slot=dropdown-menu-sub-trigger]]:gap-3 [&_[data-slot=dropdown-menu-sub-trigger]]:rounded-none [&_[data-slot=dropdown-menu-sub-trigger]]:border-b [&_[data-slot=dropdown-menu-sub-trigger]]:border-border/60 [&_[data-slot=dropdown-menu-sub-trigger]]:px-4 [&_[data-slot=dropdown-menu-sub-trigger]]:text-[14px] [&_[data-slot=dropdown-menu-sub-trigger]]:font-semibold`,
   `[&_[data-slot=dropdown-menu-sub-trigger]:last-child]:border-b-0 [&_[data-slot=dropdown-menu-sub-trigger]]:outline-none! [&_[data-slot=dropdown-menu-sub-trigger]]:focus-visible:outline-none!`,
-  `[&_[data-slot=dropdown-menu-sub-trigger]>svg:first-child]:box-content [&_[data-slot=dropdown-menu-sub-trigger]>svg:first-child]:size-[12px]! [&_[data-slot=dropdown-menu-sub-trigger]>svg:first-child]:rounded-full [&_[data-slot=dropdown-menu-sub-trigger]>svg:first-child]:border-[1.5px] [&_[data-slot=dropdown-menu-sub-trigger]>svg:first-child]:border-line [&_[data-slot=dropdown-menu-sub-trigger]>svg:first-child]:p-[5px]`,
-  `max-sm:[&_[data-slot=dropdown-menu-sub-trigger]]:h-9 max-sm:[&_[data-slot=dropdown-menu-sub-trigger]]:gap-2 max-sm:[&_[data-slot=dropdown-menu-sub-trigger]]:px-3 max-sm:[&_[data-slot=dropdown-menu-sub-trigger]]:text-xs max-sm:[&_[data-slot=dropdown-menu-sub-trigger]>svg:first-child]:size-[10px]! max-sm:[&_[data-slot=dropdown-menu-sub-trigger]>svg:first-child]:p-1`,
+  `[&_[data-slot=dropdown-menu-sub-trigger]>svg:first-child]:box-content [&_[data-slot=dropdown-menu-sub-trigger]>svg:first-child]:size-[14px]! [&_[data-slot=dropdown-menu-sub-trigger]>svg:first-child]:rounded-full [&_[data-slot=dropdown-menu-sub-trigger]>svg:first-child]:border-[1.5px] [&_[data-slot=dropdown-menu-sub-trigger]>svg:first-child]:border-line [&_[data-slot=dropdown-menu-sub-trigger]>svg:first-child]:p-[5px] [&_[data-slot=dropdown-menu-sub-trigger]>svg:first-child]:text-foreground!`,
 ].join(' ')
 
 function DropdownMenuContent({

@@ -23,5 +23,10 @@ export const queryClient = new QueryClient({
       retry: shouldRetryQuery,
       retryDelay: queryRetryDelayMs,
     },
+    mutations: {
+      /* Una mutación tiene efectos secundarios y no hay garantía de idempotencia: jamás se reenvía sola (es el valor por defecto de React Query;
+       * se declara para que un cambio de configuración no lo altere sin querer). */
+      retry: false,
+    },
   },
 });

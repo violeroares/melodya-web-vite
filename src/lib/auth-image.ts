@@ -67,9 +67,15 @@ export function shouldSkipDirectLoad(key: string, token: string | null, requireA
   return Boolean(requireAuth) || loadPrivateKeys().has(key);
 }
 
+/** Época de caché: sube cada vez que se limpia (logout / cambio de cuenta). Una descarga que EMPEZÓ en una época anterior y termina después
+ *  descarta su resultado (no crea el object URL ni lo guarda): nada de la sesión anterior vuelve a entrar en la caché. */
+let cacheEpoch = 0;
+
 /** Limpia los object URLs cacheados (logout / cambio de usuario): revoca los
- *  blobs para que no queden accesibles imágenes privadas de la cuenta anterior. */
+ *  blobs para que no queden accesibles imágenes privadas de la cuenta anterior.
+ *  También invalida las descargas que todavía están en curso (ver `cacheEpoch`). */
 export function clearAuthImageCache() {
+  cacheEpoch += 1;
   for (const obj of objectUrlCache.values()) {
     try {
       URL.revokeObjectURL(obj);
@@ -107,9 +113,11 @@ export async function authImageObjectUrl(url: string): Promise<string | null> {
   if (rateLimitRemainingMs('files') > 0) return null;
   const headers: Record<string, string> = {};
   if (token) headers.Authorization = `Bearer ${token}`;
+  const epoch = cacheEpoch;
   const task = (async () => {
     try {
       const res = await fetch(key, { headers });
+      if (epoch !== cacheEpoch) return null; // cambió la cuenta mientras bajaba: nada de esta descarga se guarda
       if (!res.ok) {
         if (res.status === 401 || res.status === 403 || res.status === 404) deniedCache.add(deniedKey(key, token));
         // 429: pausa del alcance de archivos (no frena la API general ni el refresh). No se marca como «denegada»: es transitorio.
@@ -117,6 +125,7 @@ export async function authImageObjectUrl(url: string): Promise<string | null> {
         return null;
       }
       const blob = await res.blob();
+      if (epoch !== cacheEpoch) return null; // ídem: el blob es de la sesión anterior y no se materializa
       if (blob.size === 0) return null;
       const obj = URL.createObjectURL(blob);
       objectUrlCache.set(key, obj);
@@ -126,7 +135,7 @@ export async function authImageObjectUrl(url: string): Promise<string | null> {
     } catch {
       return null;
     } finally {
-      inflight.delete(key);
+      if (epoch === cacheEpoch) inflight.delete(key); // tras una limpieza, `inflight` ya es de la época nueva
     }
   })();
   inflight.set(key, task);

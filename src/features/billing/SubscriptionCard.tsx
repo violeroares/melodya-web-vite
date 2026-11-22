@@ -176,7 +176,7 @@ export function SubscriptionCard({ subscription, entitlements }: { subscription:
                 e.preventDefault();
                 if (!cancel.isPending) cancel.mutate();
               }}
-              className="bg-destructive text-background hover:bg-destructive/90"
+              className="bg-primary text-primary-foreground hover:bg-primary/90"
             >
               {cancel.isPending && <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" aria-hidden />}
               {cancel.isPending ? 'Cancelando…' : 'Cancelar renovación'}

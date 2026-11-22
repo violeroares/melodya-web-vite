@@ -1,3 +1,4 @@
+'use client';
 
 /**
  * MELODYA WEB — PlayerBar global: un único <audio> persistente entre vistas.
@@ -180,6 +181,8 @@ export function PlayerBar() {
   const onTimeUpdate = useCallback(() => {
     const el = audioRef.current;
     if (!el) return;
+    /* Durante un seek Safari/iOS puede reportar todavía la posición anterior: se espera al «seeked» para no pisar la onda. */
+    if (el.seeking) return;
     usePlayerStore.getState().syncTime(el.currentTime, el.duration || track?.durationSec || 0);
   }, [track?.durationSec]);
 
@@ -241,7 +244,7 @@ export function PlayerBar() {
           ("MediaElementAudioSource outputs zeroes due to CORS access restrictions").
           Debe estar ANTES de asignar el src: un recurso ya cargado sin CORS queda
           "tainted" y corta el sonido al activar el visualizador. */}
-      <audio ref={audioRef} crossOrigin="anonymous" onTimeUpdate={onTimeUpdate} onError={() => void retryWithAuth()} preload="metadata" />
+      <audio ref={audioRef} crossOrigin="anonymous" onTimeUpdate={onTimeUpdate} onSeeked={onTimeUpdate} onError={() => void retryWithAuth()} preload="metadata" />
       {track && (
       <div
         role="region"

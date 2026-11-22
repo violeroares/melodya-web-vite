@@ -1,3 +1,4 @@
+'use client';
 
 /**
  * MELODYA WEB — Command palette (Ctrl/⌘+K): "simple por defecto, poderosa
@@ -29,6 +30,7 @@ import { songsApi, communityApi } from '@/lib/api';
 import { apiFileUrl } from '@/lib/api/client';
 import { startCommunityRadio, RADIO_SORT_LABELS } from '@/lib/radio';
 import { useDebounce } from '@/hooks';
+import { ConfirmDialog } from '@/features/library/library-utils';
 import type { Song, CommunitySong } from '@/types';
 
 const PALETTE_EVENT = 'melodya:open-palette';
@@ -154,6 +156,7 @@ function ShortcutsDialog({ open, onOpenChange }: { open: boolean; onOpenChange: 
 export function CommandPalette() {
   const [open, setOpen] = useState(false);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
+  const [confirmLogout, setConfirmLogout] = useState(false);
   const [query, setQuery] = useState('');
   const debounced = useDebounce(query, 300);
   const user = useAuthStore((s) => s.user);
@@ -464,7 +467,7 @@ export function CommandPalette() {
                   </CommandItem>
                   {authed && match('cerrar sesión', query) && (
                     <CommandItem
-                      onSelect={() => run(() => void logout())}
+                      onSelect={() => run(() => setConfirmLogout(true))}
                       className="cursor-pointer text-destructive focus:text-destructive [&>svg]:bg-destructive/15 [&>svg]:text-destructive!"
                     >
                       <LogOut className="h-4 w-4" aria-hidden />
@@ -494,6 +497,17 @@ export function CommandPalette() {
         </DialogContent>
       </Dialog>
       <ShortcutsDialog open={shortcutsOpen} onOpenChange={setShortcutsOpen} />
+      <ConfirmDialog
+        open={confirmLogout}
+        onOpenChange={setConfirmLogout}
+        title="¿Cerrar sesión?"
+        description="Salís de tu cuenta en este dispositivo. Tus canciones quedan guardadas."
+        actionLabel="Cerrar sesión"
+        onConfirm={() => {
+          setConfirmLogout(false);
+          void logout();
+        }}
+      />
     </>
   );
 }

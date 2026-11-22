@@ -180,6 +180,28 @@ function notifyRefreshDone() {
 /** Lee el accessToken persistido en storage (melodya.session). El cliente no
  *  importa de authStore para evitar dependencia circular; usa la clave conocida. */
 const STORAGE_KEY = 'melodya.session';
+
+/** Sesión vigente en storage (la que dejó esta u otra pestaña), o null si no hay (p. ej. tras cerrar sesión). */
+function readStoredSession(): { accessToken: string; refreshToken: string } | null {
+  if (typeof window === 'undefined' || !window.localStorage) return null;
+  try {
+    const raw = window.localStorage.getItem(STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as { accessToken?: string; refreshToken?: string };
+    return parsed.accessToken && parsed.refreshToken ? { accessToken: parsed.accessToken, refreshToken: parsed.refreshToken } : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Adopta la sesión que dejó otra pestaña en storage (sin pedir otro refresh) y avisa al store. Devuelve su access token. */
+function adoptStoredSession(): string | null {
+  const stored = readStoredSession();
+  if (!stored) return null;
+  onRefreshed(stored);
+  return stored.accessToken;
+}
+
 function readStoredAccessToken(): string | null {
   if (typeof window === 'undefined' || !window.localStorage) return null;
   try {
@@ -278,6 +300,15 @@ export async function performRefresh(): Promise<string> {
     try {
       const res = await axios.post(`${API_BASE}/auth/refresh`, { refreshToken }, { timeout: 15000 });
       const data = res.data.data as { accessToken: string; refreshToken: string; refreshTokenExpiresAt?: string };
+      /* Descarte del refresh tardío: si mientras la solicitud volaba se cerró la sesión (no queda refresh token), entró otra cuenta o otra
+       * pestaña ya rotó el token, esta respuesta es de una sesión que ya no es la vigente y NO se guarda (resucitaría una sesión cerrada o
+       * pisaría la de otra cuenta). Si hay una sesión vigente en storage se adopta esa; si no, se lanza un error TRANSITORIO (status 0): nunca
+       * cierra la sesión nueva ni cuenta como rechazo definitivo del refresh. */
+      if (getRefreshToken() !== refreshToken) {
+        const adopted = adoptStoredSession();
+        if (adopted) return adopted;
+        throw new ApiError(0, 'SESSION_CHANGED', 'La sesión cambió. Intentá de nuevo.');
+      }
       /* Persistir el nuevo token en storage INMEDIATAMENTE (no depender de onRefreshed, que puede perderse en HMR si el módulo se recarga
        * entre la respuesta HTTP y el callback). */
       persistTokensToStorage(data);

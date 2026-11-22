@@ -153,14 +153,15 @@ test('el detalle ofrece «Editar detalles» y monta el formulario SOLO para el d
 
 test('la descripción solo se pinta si existe y el resumen cae a los estilos derivados', () => {
   const view = read('src/features/song/SongDetailView.tsx');
-  // dueño: bloque debajo del encabezado; comunidad: junto a la portada, sin contenedor. Ambos solo si hay texto.
-  assert.match(view, /\{isOwner && hasText\(song\.description\) && \(/);
-  assert.match(view, /\{!isOwner && hasText\(song\.description\) && \(/);
+  // Dueño y comunidad comparten UN solo bloque junto a la portada (rediseño del detalle): solo si hay texto. Ya no hay ramas por `isOwner`.
+  assert.equal((view.match(/\{hasText\(song\.description\) && \(/g) ?? []).length, 1, 'un único bloque de descripción');
+  assert.doesNotMatch(view, /\{!?isOwner && hasText\(song\.description\)/);
   assert.match(view, /customStyleSummary\(song\)/);
-  assert.match(view, /styleSummary \? \(/);
-  // sin resumen propio se conservan el género y las etiquetas de la versión (presentación derivada)
-  assert.match(view, /\{genre && <Chip/);
-  assert.match(view, /tags\.map\(\(t\) => \(/);
+  // Los estilos se dibujan como chips separados: el resumen del dueño se parte por comas y, sin resumen propio, se conservan el género y las
+  // etiquetas de la versión (presentación derivada). Sin repetidos.
+  assert.match(view, /styleSummary \? styleSummary\.split\(','\) : \[\.\.\.\(genre\?\.split\(','\) \?\? \[\]\), \.\.\.tags\]/);
+  assert.match(view, /styleChips\.map\(\(c, i\) => \(/);
+  assert.match(view, /seen\.has\(k\)/, 'sin chips repetidos');
 });
 
 test('el detalle público recibe los textos nuevos (songFromCommunity) y los tipos los declaran', () => {

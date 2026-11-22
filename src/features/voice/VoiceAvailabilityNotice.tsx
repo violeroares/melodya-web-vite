@@ -1,3 +1,4 @@
+'use client';
 
 /**
  * Aviso de disponibilidad de una voz clonada al ELEGIRLA (no al listar): consulta GET /samples/:id/voice-availability, que el backend
@@ -41,7 +42,7 @@ export function VoiceExpiredCard({ onRecreate, disabled = false }: { onRecreate:
         onClick={onRecreate}
         disabled={disabled}
         aria-label="Recrear mi voz"
-        className="inline-flex min-h-10 shrink-0 items-center justify-center self-center rounded-3xl border-[1.5px] border-line px-4 text-[15px] font-bold leading-[1.2] tracking-[0.02em] text-foreground transition-colors hover:bg-foreground/10 focus-visible:ring-[4px] focus-visible:ring-[var(--m-focus-ring)] focus:outline-hidden disabled:cursor-not-allowed disabled:opacity-50"
+        className="inline-flex min-h-10 shrink-0 items-center justify-center self-center rounded-3xl border-[1.5px] border-line px-4 text-[15px] font-bold leading-[1.2] tracking-[0.02em] text-foreground transition-colors hover:bg-foreground/10 focus-visible:ring-[4px] focus-visible:ring-[var(--m-focus-ring)] focus:outline-hidden disabled:cursor-not-allowed disabled:opacity-50 disabled:border-transparent"
       >
         Recrear
       </button>

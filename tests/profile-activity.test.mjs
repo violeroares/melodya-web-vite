@@ -82,8 +82,12 @@ const genRow = hist.slice(hist.indexOf('function GenerationOnlyRow'), hist.index
 
 test('Perfil › Mi actividad: la pestaña usa el historial unificado y conserva el enlace a fichas', () => {
   assert.match(view, /label: 'Mi actividad'/);
-  assert.match(tab, /<ActivityHistory \/>/);
+  // El historial unificado ahora recibe el enlace a fichas como `footer` (rediseño): ya no se escribe sin props.
+  assert.match(tab, /<ActivityHistory\b/);
+  assert.match(tab, /footer=\{/, 'el enlace a fichas se entrega al historial como pie');
+  assert.match(tab, /navigate\('\/plans'\)/);
   assert.match(tab, /Ver fichas/);
+  assert.match(hist, /\{footer\}/, 'y el historial lo dibuja');
   assert.doesNotMatch(view, /function GenerationRow|ACTIVITY_PAGE_SIZE/);
 });
 

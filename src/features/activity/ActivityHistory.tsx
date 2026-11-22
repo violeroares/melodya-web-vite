@@ -1,3 +1,4 @@
+'use client';
 
 /**
  * Mi actividad (Perfil): el historial de fichas de siempre —mismo diseño, filtros, importes, saldos, fechas e iconos— con las generaciones
@@ -11,13 +12,15 @@
 
 import React from 'react';
 import { useInfiniteQuery, type UseInfiniteQueryResult, type InfiniteData } from '@tanstack/react-query';
-import { CheckCircle2, Loader2, Music4, RefreshCw, Settings2, ShoppingBag, Sparkles, XCircle, Zap } from 'lucide-react';
+import { CheckCircle2, Loader2, Music4, RefreshCw, Settings2, ShoppingBag, Sparkles, XCircle, type LucideIcon } from 'lucide-react';
+import { CoinIcon } from '@/components/common/CoinIcon';
 import { billingApi, generationApi } from '@/lib/api';
 import { navigate } from '@/lib/router';
 import { formatRelative } from '@/hooks';
 import { cn } from '@/lib/utils';
 import type { CreditTransaction, Generation, Paginated } from '@/types';
 import { EmptyState, ErrorState, LoadingRows } from '@/components/common';
+import { SegmentedTabs } from '@/components/common/SegmentedTabs';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { describeTransaction } from '../billing/transaction-label';
@@ -29,9 +32,9 @@ import { buildTimeline, type TimelineEntry, type TimelineSource } from './timeli
 const fmtInt = (n: number) => n.toLocaleString('es-AR');
 
 /* ── Icono y color por type real (el texto del movimiento sale de describeTransaction) ── */
-const TX_ICON: Record<CreditTransaction['type'], typeof Zap> = {
+const TX_ICON: Record<CreditTransaction['type'], typeof CoinIcon> = {
   WELCOME_GRANT: Sparkles,
-  PLAN_GRANT: Zap,
+  PLAN_GRANT: CoinIcon,
   PACKAGE_PURCHASE: ShoppingBag,
   ADMIN_ADJUSTMENT: Settings2,
   GENERATION_DEBIT: Music4,
@@ -49,11 +52,11 @@ const TX_TONE: Record<CreditTransaction['type'], string> = {
 };
 
 type TxFilterKey = 'todas' | 'compras' | 'generaciones' | 'devoluciones';
-const TX_FILTERS: Array<{ key: TxFilterKey; label: string; types: Array<CreditTransaction['type'] | null>; withGenerations: boolean }> = [
-  { key: 'todas', label: 'Todas', types: [null], withGenerations: true },
-  { key: 'compras', label: 'Compras', types: ['PACKAGE_PURCHASE', 'PLAN_GRANT'], withGenerations: false }, // la API filtra por un solo type: una fuente por cada uno
-  { key: 'generaciones', label: 'Generaciones', types: ['GENERATION_DEBIT'], withGenerations: true },
-  { key: 'devoluciones', label: 'Devoluciones', types: ['GENERATION_REFUND'], withGenerations: false },
+const TX_FILTERS: Array<{ key: TxFilterKey; label: string; icon: LucideIcon; types: Array<CreditTransaction['type'] | null>; withGenerations: boolean }> = [
+  { key: 'todas', label: 'Todas', icon: CoinIcon, types: [null], withGenerations: true },
+  { key: 'compras', label: 'Compras', icon: ShoppingBag, types: ['PACKAGE_PURCHASE', 'PLAN_GRANT'], withGenerations: false }, // la API filtra por un solo type: una fuente por cada uno
+  { key: 'generaciones', label: 'Generaciones', icon: Music4, types: ['GENERATION_DEBIT'], withGenerations: true },
+  { key: 'devoluciones', label: 'Devoluciones', icon: RefreshCw, types: ['GENERATION_REFUND'], withGenerations: false },
 ];
 
 const PAGE_SIZE = 10;
@@ -94,7 +97,7 @@ function useGenerationSource(enabled: boolean) {
   });
 }
 
-export function ActivityHistory() {
+export function ActivityHistory({ footer }: { footer?: React.ReactNode } = {}) {
   const [filter, setFilter] = React.useState<TxFilterKey>('todas');
   const spec = TX_FILTERS.find((f) => f.key === filter) ?? TX_FILTERS[0];
   const tx0 = useTxSource(filter, 0);
@@ -124,29 +127,14 @@ export function ActivityHistory() {
   return (
     <section>
       {/* Grupo segmentado como las secciones de «Tu biblioteca»: contenedor con borde fino y la opción elegida en píldora */}
-      <div
-        className="mb-4 flex gap-1 scrollbar-none select-none overflow-x-auto rounded-[28px] border-[1.5px] border-line p-1"
-        role="group"
-        aria-label="Filtrar actividad"
-      >
-        {TX_FILTERS.map((f) => {
-          const active = filter === f.key;
-          return (
-            <button
-              key={f.key}
-              type="button"
-              aria-pressed={active}
-              onClick={() => setFilter(f.key)}
-              className={cn(
-                'flex h-10 flex-1 shrink-0 items-center justify-center rounded-[22px] px-3 text-[12.5px] whitespace-nowrap transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 sm:h-11 sm:px-4 sm:text-[13px]',
-                active ? 'bg-selected font-bold text-on-selected' : 'font-medium text-foreground hover:bg-accent'
-              )}
-            >
-              {f.label}
-            </button>
-          );
-        })}
-      </div>
+      <SegmentedTabs
+        tabs={TX_FILTERS.map((f) => ({ key: f.key, label: f.label, icon: f.icon }))}
+        value={filter}
+        onChange={setFilter}
+        ariaLabel="Filtrar actividad"
+        variant="trash"
+        className="mb-4"
+      />
       {/* Contenedor como «Tus canciones» del prototipo estilo-visual-v2: borde fino, esquinas 28/28/14/14, fondo de campo y filas separadas por una línea */}
       <Card className="gap-0 overflow-hidden rounded-[28px_28px_14px_14px] border-[1.5px] border-[var(--m-border)] bg-[var(--m-input)] py-0">
         <CardContent className="p-0">
@@ -156,7 +144,7 @@ export function ActivityHistory() {
             <div className="p-4 sm:p-5"><ErrorState message="No pudimos cargar tu actividad." onRetry={() => all.forEach((q) => void q.refetch())} /></div>
           ) : timeline.entries.length === 0 && !timeline.hasMore ? (
             <EmptyState
-              icon={<Zap className="h-6 w-6" />}
+              icon={<CoinIcon className="h-6 w-6" />}
               title="Todavía no hay actividad"
               description="Cuando compres fichas o crees canciones, vas a ver cada movimiento acá."
               actionLabel="Crear mi primera canción"
@@ -167,13 +155,19 @@ export function ActivityHistory() {
               <ul aria-label="Actividad de fichas y generaciones">
                 {timeline.entries.map((entry) => <EntryRow key={entry.key} entry={entry} />)}
               </ul>
-              {timeline.hasMore && (
-                <Button className="mx-auto my-4 flex rounded-full px-8" onClick={loadMore} disabled={fetching}>
+            </>
+          )}
+          {/* «Ver más» y el botón extra que pase la pantalla (p. ej. «Ver fichas»), adentro del contenedor, debajo de la lista */}
+          {((!loading && !failed && timeline.hasMore) || footer) && (
+            <div className="flex flex-wrap items-center justify-center gap-3 border-t border-[var(--m-separator)] p-4">
+              {!loading && !failed && timeline.hasMore && (
+                <Button className="h-11 rounded-full px-8" onClick={loadMore} disabled={fetching}>
                   {fetching && <Loader2 className="h-4 w-4 animate-spin" aria-hidden />}
                   Ver más
                 </Button>
               )}
-            </>
+              {footer}
+            </div>
           )}
         </CardContent>
       </Card>
@@ -199,8 +193,8 @@ function TransactionRow({ tx, generation, refundEvidence }: { tx: CreditTransact
   const positive = tx.amount >= 0;
   return (
     <li className={ROW}>
-      <span className={cn('flex size-[52px] shrink-0 items-center justify-center rounded-full text-primary-foreground', TX_TONE[tx.type] ?? 'bg-element-sound')} aria-hidden>
-        <Icon className="h-5 w-5" />
+      <span className={cn('flex size-11 shrink-0 items-center justify-center rounded-full text-primary-foreground', TX_TONE[tx.type] ?? 'bg-element-sound')} aria-hidden>
+        <Icon className="h-[18px] w-[18px]" />
       </span>
       <div className="min-w-0 flex-1 leading-tight">
         <p className="truncate font-display text-base font-bold text-foreground">{title}</p>
@@ -228,8 +222,8 @@ function GenerationOnlyRow({ g }: { g: Generation }) {
   const label = generationLabels(g.generationTypes)[0] ?? 'Generación';
   return (
     <li className={ROW}>
-      <span className="flex size-[52px] shrink-0 items-center justify-center rounded-full bg-element-lyrics text-primary-foreground" aria-hidden>
-        <StatusIcon className="h-5 w-5" />
+      <span className="flex size-11 shrink-0 items-center justify-center rounded-full bg-element-lyrics text-primary-foreground" aria-hidden>
+        <StatusIcon className="h-[18px] w-[18px]" />
       </span>
       <div className="min-w-0 flex-1 leading-tight">
         <p className="truncate font-display text-base font-bold text-foreground">{label}</p>

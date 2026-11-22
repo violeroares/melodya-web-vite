@@ -1,3 +1,4 @@
+'use client';
 
 /**
  * MELODYA WEB — Biblioteca › Letras (Songwriting Studio).
@@ -284,7 +285,7 @@ export function LyricsTab() {
                       {lyric.genre && (
                         <span className="inline-flex items-center rounded-full border border-muted-foreground px-[9px] py-[3px] text-xs leading-none font-medium text-foreground">{lyric.genre}</span>
                       )}
-                      {lyric.tags.slice(0, 3).map((tag) => (
+                      {lyric.tags.filter((tag, i, all) => tag.toLowerCase() !== (lyric.genre ?? '').toLowerCase() && all.findIndex((t) => t.toLowerCase() === tag.toLowerCase()) === i).slice(0, 3).map((tag) => (
                         <span key={tag} className="inline-flex items-center rounded-full border border-lyric-tag px-[9px] py-[3px] text-xs leading-none font-medium text-lyric-tag">
                           {tag}
                         </span>

@@ -1,3 +1,4 @@
+'use client';
 
 /**
  * MELODYA WEB — Perfil (rutas #/profile y #/profile/settings; auth requerida).
@@ -13,9 +14,9 @@ import { ActivityHistory } from '@/features/activity/ActivityHistory';
 import React, { useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
-  AudioLines, Ban, Camera, Check, CheckCircle2, Coins, Crown, Heart, ImagePlus, KeyRound, Loader2, LogOut,
-  Music4, Music2, Plus, Settings2, ShieldCheck, Trash2, Unlock, User, UserMinus, UserPlus, Users, X, Zap,
-} from 'lucide-react';
+  AudioLines, Ban, Camera, Check, CheckCircle2, Crown, Eye, EyeOff, ImagePlus, KeyRound, Loader2, LogOut,
+  MonitorSmartphone, Music4, Music2, Plus, Settings2, ShieldCheck, Trash2, Unlock, User, UserMinus, UserPlus, Users, X, type LucideIcon } from 'lucide-react';
+import { CoinIcon } from '@/components/common/CoinIcon';
 import { authApi, communityApi, profileApi } from '@/lib/api';
 import { toUserMessage } from '@/lib/errors';
 import { navigate, useRoute } from '@/lib/router';
@@ -24,18 +25,40 @@ import { formatNumber, useCredits } from '@/hooks';
 import { useToast } from '@/hooks/use-toast';
 import type { CommunityUserCard, MeProfile, Paginated } from '@/types';
 import { cn } from '@/lib/utils';
-import { EmptyState, ErrorState, LoadingRows, SectionHeader, AuthAvatar, AuthImage } from '@/components/common';
+import { Chip, ErrorState, LoadingRows, SectionHeader, AuthAvatar, AuthImage } from '@/components/common';
 import { SegmentedTabs } from '@/components/common/SegmentedTabs';
+import { DashedEmpty } from '@/components/common/DashedEmpty';
+import { ConfirmDialog } from '@/features/library/library-utils';
+import { ExpandableLyrics } from '@/features/creator/PlanetEditors';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
-import { Textarea } from '@/components/ui/textarea';
+
+/* Tarjeta de las listas del sistema (design-V2): esquinas 28/28/14/14, borde de 1,5 px y fondo de campo. */
+const CARD = 'gap-0 rounded-[28px_28px_14px_14px] border-[1.5px] border-[var(--m-border)] bg-[var(--m-input)] py-0 shadow-none';
+/* Título de tarjeta con su ícono en un círculo, como el de «Preferencias» y el de «Publicación» de una canción propia. */
+function CardHeading({ icon: Icon, tone = 'gold', children }: { icon: LucideIcon; tone?: 'gold' | 'sound'; children: React.ReactNode }) {
+  return (
+    <h3 className="flex items-center gap-2 font-display text-lg font-bold text-foreground">
+      <span
+        aria-hidden
+        className={cn('flex size-8 shrink-0 items-center justify-center rounded-full', tone === 'sound' ? 'bg-element-sound text-[#131C33]' : 'bg-gold text-on-gold')}
+      >
+        <Icon className="h-4 w-4" />
+      </span>
+      {children}
+    </h3>
+  );
+}
+
+/* Botón secundario de contorno fino. */
+const OUTLINE_BTN = 'rounded-full border-[1.5px] border-line bg-transparent text-foreground hover:bg-accent';
 
 /* ── Tabs (hash-linkable: /profile, /profile/security, /profile/activity, /profile/settings) ── */
 const PROFILE_TABS = [
@@ -82,7 +105,7 @@ export function ProfileView() {
   return (
     <div className="view-in">
       <header className="mb-6">
-        <h1 className="font-display text-2xl font-extrabold tracking-tight text-foreground sm:text-3xl">Tu perfil</h1>
+        <h1 className="font-display text-3xl font-extrabold tracking-tight text-foreground">Tu perfil</h1>
         <p className="mt-1 text-sm text-muted-foreground">Quién sos en Melodya, tu seguridad y tu actividad.</p>
       </header>
 
@@ -117,6 +140,7 @@ function ProfileHeaderCard({ user }: { user: MeProfile }) {
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
   const [uploadingCover, setUploadingCover] = useState(false);
   const [removingCover, setRemovingCover] = useState(false);
+  const [confirmCover, setConfirmCover] = useState(false);
   const { data: credits } = useCredits();
   const balance = credits?.balance ?? user.creditsBalance;
 
@@ -180,10 +204,10 @@ function ProfileHeaderCard({ user }: { user: MeProfile }) {
   const coverBusy = uploadingCover || removingCover;
 
   const overlayBtn =
-    'flex h-9 cursor-pointer items-center gap-1.5 rounded-full border border-white/15 bg-black/45 px-3 text-xs font-semibold text-white backdrop-blur-sm transition-all hover:bg-black/65 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white disabled:cursor-wait disabled:opacity-60';
+    'flex h-10 cursor-pointer items-center gap-1.5 rounded-full border-[1.5px] border-white/40 bg-black/45 px-3.5 text-[13px] font-semibold text-white backdrop-blur-sm transition-all hover:bg-black/65 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white disabled:cursor-wait disabled:opacity-60 disabled:border-transparent';
 
   return (
-    <Card className="py-0 overflow-hidden rounded-cover border-border/70 bg-surface">
+    <Card className={cn(CARD, 'overflow-hidden')}>
       {/* Portada (v0.19) con identidad superpuesta: imagen subida o gradiente de la marca */}
       <div className="group/cover relative aspect-video max-h-80 min-h-64 w-full" role="img" aria-label={user.coverImageUrl ? `Portada de ${user.name}` : 'Sin portada'}>
         <AuthImage src={user.coverImageUrl} alt={`Portada de ${user.name}`} className="absolute inset-0 h-full w-full">
@@ -193,6 +217,7 @@ function ProfileHeaderCard({ user }: { user: MeProfile }) {
             <div className="absolute bottom-2 left-1/3 h-20 w-40 rounded-full bg-white/5 blur-xl" aria-hidden />
           </div>
         </AuthImage>
+
         <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/85 via-black/30 to-transparent" aria-hidden />
 
         {/* Controles de portada: arriba a la derecha, siempre visibles (mobile no tiene hover) */}
@@ -200,11 +225,11 @@ function ProfileHeaderCard({ user }: { user: MeProfile }) {
           {user.coverImageUrl && (
             <button
               type="button"
-              onClick={onRemoveCover}
+              onClick={() => setConfirmCover(true)}
               disabled={coverBusy}
               aria-label="Quitar la portada del perfil"
               title="Quitar portada"
-              className={cn(overlayBtn, 'w-9 justify-center px-0 hover:bg-destructive/80')}
+              className={cn(overlayBtn, 'size-10 shrink-0 justify-center gap-0 px-0 hover:bg-destructive/80')}
             >
               {removingCover ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <Trash2 className="h-4 w-4" aria-hidden />}
             </button>
@@ -215,20 +240,38 @@ function ProfileHeaderCard({ user }: { user: MeProfile }) {
             disabled={coverBusy}
             aria-label={user.coverImageUrl ? 'Cambiar la portada del perfil' : 'Agregar una portada al perfil'}
             title={user.coverImageUrl ? 'Cambiar portada' : 'Agregar portada'}
-            className={overlayBtn}
+            className={cn(overlayBtn, 'max-sm:size-10 max-sm:shrink-0 max-sm:justify-center max-sm:gap-0 max-sm:px-0')}
           >
             {uploadingCover ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <ImagePlus className="h-4 w-4" aria-hidden />}
             <span className="hidden sm:inline">{user.coverImageUrl ? 'Cambiar' : 'Agregar'} portada</span>
           </button>
         </div>
         <input ref={coverInput} type="file" accept="image/*" className="hidden" onChange={onCoverFile} aria-label="Subir imagen de portada" />
+        <ConfirmDialog
+          open={confirmCover}
+          onOpenChange={setConfirmCover}
+          title="¿Quitar la portada?"
+          description="Tu perfil público vuelve a mostrarse sin portada. Podés subir otra cuando quieras."
+          actionLabel="Quitar portada"
+          pending={removingCover}
+          onConfirm={() => {
+            setConfirmCover(false);
+            void onRemoveCover();
+          }}
+        />
 
         {/* Identidad: avatar (con upload) + nombre + email */}
         <div className="absolute inset-x-0 bottom-0 flex flex-col gap-4 p-4 sm:p-6 lg:flex-row lg:items-end lg:justify-between">
           <div className="flex min-w-0 items-center gap-4">
           <div className="group relative shrink-0">
-            <span className="block rounded-full ring-2 ring-white/20" aria-hidden>
-              <AuthAvatar src={user.avatarUrl} name={user.name} className="h-20 w-20 border-0 sm:h-24 sm:w-24" fallbackClassName="font-display text-3xl font-extrabold" />
+            {/* Mismo avatar que los «Creadores» de Comunidad: aro del color de fondo y aro dorado por fuera */}
+            <span className="block rounded-full" aria-hidden>
+              <AuthAvatar
+                src={user.avatarUrl}
+                name={user.name}
+                className="size-20 border-0 shadow-[0_0_0_4px_var(--background),0_0_0_6.5px_var(--m-gold)] sm:size-24"
+                fallbackClassName="bg-surface text-[22px] text-foreground sm:text-[26px] dark:text-foreground"
+              />
             </span>
             <button
               type="button"
@@ -247,19 +290,19 @@ function ProfileHeaderCard({ user }: { user: MeProfile }) {
           </div>
           <div className="min-w-0">
             <h2 className="truncate font-display text-2xl font-extrabold tracking-tight text-white drop-shadow sm:text-4xl">{user.name}</h2>
-            <p className="truncate text-sm text-white/80">{user.email}</p>
-            <p className="mt-0.5 text-xs text-white/65">Miembro desde {fmtDate(user.createdAt)}</p>
+            <p className="truncate text-[15px] font-semibold text-white/90">{user.email}</p>
+            <p className="mt-0.5 text-[13px] text-white/65">Miembro desde {fmtDate(user.createdAt)}</p>
           </div>
           </div>
 
           {/* Fichas y plan, a la derecha */}
           <div className="flex shrink-0 flex-wrap items-center gap-2">
-            <Badge variant="outline" className="gap-1.5 border-white/20 bg-black/45 text-white backdrop-blur-sm">
-              <Zap className="h-3.5 w-3.5 text-amber" aria-hidden /> {balance.toLocaleString('es-AR')} fichas
+            <Badge variant="outline" className="h-8 gap-1.5 border-[1.5px] border-white/40 bg-black/45 px-3 text-[13px] text-white backdrop-blur-sm">
+              <CoinIcon className="h-3.5 w-3.5 text-[var(--m-gold)]" aria-hidden /> {balance.toLocaleString('es-AR')} fichas
             </Badge>
             {(user.effectivePlan ?? user.subscription?.plan) && (
-              <Badge variant="outline" className="gap-1.5 border-white/20 bg-black/45 text-white backdrop-blur-sm">
-                <Crown className="h-3.5 w-3.5 text-amber" aria-hidden /> Plan {(user.effectivePlan ?? user.subscription!.plan).name}
+              <Badge variant="outline" className="h-8 gap-1.5 border-[1.5px] border-white/40 bg-black/45 px-3 text-[13px] text-white backdrop-blur-sm">
+                <Crown className="h-3.5 w-3.5 text-[var(--m-gold)]" aria-hidden /> Plan {(user.effectivePlan ?? user.subscription!.plan).name}
               </Badge>
             )}
           </div>
@@ -334,12 +377,12 @@ function ProfileTab({ user }: { user: MeProfile }) {
   return (
     <div className="space-y-4">
       {/* Datos */}
-      <Card className="rounded-cover border-border/70 bg-surface">
-        <CardContent className="p-6">
-          <h3 className="font-display text-lg font-bold text-foreground">Tus datos</h3>
+      <Card className={CARD}>
+        <CardContent className="p-5 sm:p-6">
+          <CardHeading icon={User}>Tus datos</CardHeading>
           <div className="mt-4 grid gap-5">
             <div className="grid gap-2">
-              <Label htmlFor="profile-name">Nombre</Label>
+              <Label htmlFor="profile-name" className="text-[13px] font-bold">Nombre</Label>
               <Input
                 id="profile-name"
                 value={name}
@@ -350,18 +393,18 @@ function ProfileTab({ user }: { user: MeProfile }) {
               />
             </div>
             <div className="grid gap-2">
-              <Label htmlFor="profile-email">Email</Label>
+              <Label htmlFor="profile-email" className="text-[13px] font-bold">Email</Label>
               <Input id="profile-email" value={user.email} readOnly className="text-muted-foreground" />
               <p className="text-xs text-muted-foreground">El email no se puede cambiar.</p>
             </div>
             {/* v0.19 — géneros musicales (hasta 5): input + Añadir → chips removibles */}
             <div className="grid gap-2">
               <div className="flex items-baseline justify-between gap-2">
-                <Label htmlFor="profile-genre">Géneros musicales</Label>
+                <Label htmlFor="profile-genre" className="text-[13px] font-bold">Géneros musicales</Label>
                 <span
                   className={cn(
-                    'text-[11px] tabular-nums',
-                    genres.length >= MAX_GENRES ? 'font-semibold text-amber-strong' : 'text-muted-foreground'
+                    'text-xs tabular-nums',
+                    genres.length >= MAX_GENRES ? 'font-bold text-label' : 'text-muted-foreground'
                   )}
                   aria-live="polite"
                 >
@@ -369,8 +412,8 @@ function ProfileTab({ user }: { user: MeProfile }) {
                 </span>
               </div>
               <div className="flex gap-2">
-                <div className="relative flex-1">
-                  <Music2 className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" aria-hidden />
+                <div className="relative min-w-0 flex-1">
+                  <Music2 className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" aria-hidden />
                   <Input
                     id="profile-genre"
                     value={genreInput}
@@ -384,14 +427,15 @@ function ProfileTab({ user }: { user: MeProfile }) {
                     disabled={!canAddGenre}
                     placeholder={canAddGenre ? 'Ej.: rock, cumbia, trap…' : 'Ya tenés 5: quitá uno para cambiar'}
                     aria-describedby="profile-genres-hint"
-                    className="h-11 rounded-xl pl-10 pr-4 disabled:opacity-60"
+                    className="pl-11 pr-4 disabled:opacity-60"
                   />
                 </div>
                 <Button
                   type="button"
                   onClick={() => addGenre(genreInput)}
                   disabled={!canAddGenre || genreInput.trim().length === 0 || genreExists(genreInput)}
-                  className="h-11 shrink-0 rounded-xl border-amber/40 bg-amber/15 text-amber-strong hover:border-amber hover:bg-amber/25 hover:text-amber-strong"
+                  variant="outline"
+                  className="shrink-0 h-14 rounded-full border-[1.5px] border-primary bg-primary px-5 text-sm font-bold text-[#131C33] hover:border-primary hover:bg-primary hover:text-[#131C33] hover:brightness-95"
                 >
                   <Plus className="h-4 w-4" aria-hidden />
                   Añadir
@@ -400,19 +444,13 @@ function ProfileTab({ user }: { user: MeProfile }) {
               {genres.length > 0 && (
                 <ul className="flex flex-wrap gap-2 pt-0.5" aria-label="Tus géneros musicales">
                   {genres.map((g) => (
-                    <li
-                      key={g}
-                      className="inline-flex items-center gap-1.5 rounded-full border border-amber/50 bg-amber/15 px-3 py-1 text-xs font-semibold text-amber-strong"
-                    >
-                      {g}
-                      <button
-                        type="button"
-                        onClick={() => removeGenre(g)}
-                        aria-label={`Quitar el género ${g}`}
-                        className="-mr-1 rounded-full p-1 text-amber-strong/70 transition-colors hover:bg-amber/25 hover:text-foreground"
-                      >
-                        <X className="h-3 w-3" aria-hidden />
-                      </button>
+                    /* Mismo chip que «Agregados por vos» del panel de Estilo (Crear): elegido, con la X para quitarlo */
+                    <li key={g}>
+                      <Chip active onClick={() => removeGenre(g)}>
+                        <span>{g}</span>
+                        <X className="h-3.5 w-3.5" aria-hidden />
+                        <span className="sr-only">Quitar el género {g}</span>
+                      </Chip>
                     </li>
                   ))}
                 </ul>
@@ -423,49 +461,47 @@ function ProfileTab({ user }: { user: MeProfile }) {
             </div>
             <div className="grid gap-2">
               <div className="flex items-baseline justify-between gap-2">
-                <Label htmlFor="profile-bio">Bio pública</Label>
-                <span className="text-[11px] tabular-nums text-muted-foreground" aria-live="polite">
+                <Label htmlFor="profile-bio" className="text-[13px] font-bold">Bio pública</Label>
+                <span className="text-xs tabular-nums text-muted-foreground" aria-live="polite">
                   {bio.length}/500
                 </span>
               </div>
-              <Textarea
+              {/* Mismo lienzo que «Tu idea» de Crear: borrar el texto y ampliarlo a pantalla completa */}
+              <ExpandableLyrics
                 id="profile-bio"
+                plain
                 value={bio}
-                onChange={(e) => setBio(e.target.value)}
+                onChange={setBio}
                 maxLength={500}
-                rows={4}
                 placeholder="Contale a la comunidad qué música hacés…"
-                aria-describedby="profile-bio-hint"
-                className="min-h-24 resize-y rounded-xl"
+                heightClass="h-[110px]"
+                modalTitle="Bio pública"
+                ariaLabel="Bio pública"
               />
               <p id="profile-bio-hint" className="text-xs text-muted-foreground">
                 Se muestra en tu perfil público de la comunidad. Dejarla vacía la quita.
               </p>
             </div>
-            <Button
-              onClick={() => saveMutation.mutate()}
-              disabled={!formDirty || saveMutation.isPending}
-              className="w-full rounded-full gradient-warm text-primary-foreground hover:text-primary-foreground sm:w-auto sm:self-start"
-            >
-              {saveMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <Check className="h-4 w-4" aria-hidden />}
-              Guardar cambios
-            </Button>
+            <div className="flex justify-center">
+              <Button
+                onClick={() => saveMutation.mutate()}
+                disabled={!formDirty || saveMutation.isPending}
+                className="rounded-full gradient-warm text-primary-foreground hover:text-primary-foreground"
+              >
+                {saveMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <Check className="h-4 w-4" aria-hidden />}
+                Guardar cambios
+              </Button>
+            </div>
           </div>
         </CardContent>
       </Card>
 
       {/* Autorización de uso de voz */}
-      <Card className="rounded-cover border-border/70 bg-surface">
-        <CardContent className="p-6">
+      <Card className={CARD}>
+        <CardContent className="p-5 sm:p-6">
           <div className="flex items-start gap-4">
-            <span
-              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-amber/10 text-amber-strong"
-              aria-hidden
-            >
-              <AudioLines className="h-5 w-5" />
-            </span>
             <div className="min-w-0">
-              <h3 className="font-display text-lg font-bold text-foreground">Autorización de uso de voz</h3>
+              <CardHeading icon={AudioLines} tone="sound">Autorización de uso de voz</CardHeading>
               {!consentAccepted ? (
                 <>
                   <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
@@ -474,14 +510,14 @@ function ProfileTab({ user }: { user: MeProfile }) {
                   </p>
                   <Button
                     variant="outline"
-                    className="mt-4 rounded-full border-amber/40 bg-amber/10 text-amber-strong hover:border-amber hover:bg-amber/20 hover:text-amber-strong"
+                    className={cn(OUTLINE_BTN, 'mt-4')}
                     onClick={() => setConsentOpen(true)}
                   >
                     Leer y aceptar
                   </Button>
                 </>
               ) : (
-                <p className="mt-2 flex flex-wrap items-center gap-1.5 text-sm font-medium text-success">
+                <p className="mt-2 flex flex-wrap items-center gap-1.5 text-sm font-semibold text-success">
                   <CheckCircle2 className="h-4.5 w-4.5" aria-hidden />
                   Aceptada el {fmtDate(user.voiceConsentAcceptedAt)} (versión {user.voiceConsentVersion ?? VOICE_CONSENT_VERSION})
                 </p>
@@ -498,7 +534,7 @@ function ProfileTab({ user }: { user: MeProfile }) {
             <DialogTitle className="font-display">Autorización de uso de voz</DialogTitle>
             <DialogDescription>Leé con calma: es corto y está en cristiano.</DialogDescription>
           </DialogHeader>
-          <div className="max-h-72 space-y-3 overflow-y-auto rounded-xl bg-surface-2 p-4 text-sm leading-relaxed text-foreground/90">
+          <div className="max-h-72 space-y-3 overflow-y-auto rounded-[20px_20px_6px_6px] border-[1.5px] border-line bg-[var(--m-input)] p-4 text-sm leading-relaxed text-foreground/90">
             {VOICE_CONSENT_PARAGRAPHS.map((p, i) => (
               <p key={i}>{p}</p>
             ))}
@@ -516,7 +552,7 @@ function ProfileTab({ user }: { user: MeProfile }) {
             </Label>
           </div>
           <DialogFooter>
-            <Button variant="ghost" className="rounded-full" onClick={() => setConsentOpen(false)}>
+            <Button variant="outline" className={OUTLINE_BTN} onClick={() => setConsentOpen(false)}>
               Cancelar
             </Button>
             <Button
@@ -534,6 +570,25 @@ function ProfileTab({ user }: { user: MeProfile }) {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+    </div>
+  );
+}
+
+/* Campo de contraseña con el ojo para verla u ocultarla (como en «Cambiar contraseña» del diseño). */
+function PasswordInput({ className, ...props }: Omit<React.ComponentProps<typeof Input>, 'type'>) {
+  const [visible, setVisible] = useState(false);
+  return (
+    <div className="relative">
+      <Input {...props} type={visible ? 'text' : 'password'} className={cn('pr-14', className)} />
+      <button
+        type="button"
+        onClick={() => setVisible((v) => !v)}
+        aria-label={visible ? 'Ocultar contraseña' : 'Mostrar contraseña'}
+        title={visible ? 'Ocultar contraseña' : 'Mostrar contraseña'}
+        className="absolute top-1/2 right-2 flex size-10 -translate-y-1/2 cursor-pointer items-center justify-center rounded-full text-foreground transition-colors hover:bg-accent focus-visible:outline-2 focus-visible:outline-offset-0 focus-visible:outline-foreground"
+      >
+        {visible ? <EyeOff className="h-5 w-5" aria-hidden /> : <Eye className="h-5 w-5" aria-hidden />}
+      </button>
     </div>
   );
 }
@@ -588,15 +643,14 @@ function SecurityTab() {
 
   return (
     <div className="space-y-4">
-      <Card className="rounded-cover border-border/70 bg-surface">
-        <CardContent className="p-6">
-          <h3 className="font-display text-lg font-bold text-foreground">Cambiar contraseña</h3>
+      <Card className={CARD}>
+        <CardContent className="p-5 sm:p-6">
+          <CardHeading icon={KeyRound}>Cambiar contraseña</CardHeading>
           <form onSubmit={submit} noValidate className="mt-4 grid gap-4">
             <div className="grid gap-2">
-              <Label htmlFor="current-password">Contraseña actual</Label>
-              <Input
+              <Label htmlFor="current-password" className="text-[13px] font-bold">Contraseña actual</Label>
+              <PasswordInput
                 id="current-password"
-                type="password"
                 autoComplete="current-password"
                 value={currentPassword}
                 onChange={(e) => setCurrentPassword(e.target.value)}
@@ -604,10 +658,9 @@ function SecurityTab() {
               />
             </div>
             <div className="grid gap-2">
-              <Label htmlFor="new-password">Contraseña nueva</Label>
-              <Input
+              <Label htmlFor="new-password" className="text-[13px] font-bold">Contraseña nueva</Label>
+              <PasswordInput
                 id="new-password"
-                type="password"
                 autoComplete="new-password"
                 value={newPassword}
                 onChange={(e) => setNewPassword(e.target.value)}
@@ -617,10 +670,9 @@ function SecurityTab() {
               <p className="text-xs text-muted-foreground">Mínimo 8 caracteres, con letras y números.</p>
             </div>
             <div className="grid gap-2">
-              <Label htmlFor="confirm-password">Confirmá la contraseña nueva</Label>
-              <Input
+              <Label htmlFor="confirm-password" className="text-[13px] font-bold">Confirmá la contraseña nueva</Label>
+              <PasswordInput
                 id="confirm-password"
-                type="password"
                 autoComplete="new-password"
                 value={confirmPassword}
                 onChange={(e) => setConfirmPassword(e.target.value)}
@@ -633,56 +685,60 @@ function SecurityTab() {
                 {validationError}
               </p>
             )}
-            <Button
-              type="submit"
-              disabled={changeMutation.isPending || !currentPassword || !newPassword || !confirmPassword}
-              className="w-full rounded-full gradient-warm text-primary-foreground hover:text-primary-foreground sm:w-auto sm:self-start"
-            >
-              {changeMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <KeyRound className="h-4 w-4" aria-hidden />}
-              Cambiar contraseña
-            </Button>
+            <div className="flex justify-center">
+              <Button
+                type="submit"
+                disabled={changeMutation.isPending || !currentPassword || !newPassword || !confirmPassword}
+                className="rounded-full gradient-warm text-primary-foreground hover:text-primary-foreground"
+              >
+                {changeMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <KeyRound className="h-4 w-4" aria-hidden />}
+                Cambiar contraseña
+              </Button>
+            </div>
           </form>
         </CardContent>
       </Card>
 
-      <Card className="rounded-cover border-border/70 bg-surface">
-        <CardContent className="p-6">
-          <h3 className="font-display text-lg font-bold text-foreground">Sesiones abiertas</h3>
+      <Card className={CARD}>
+        <CardContent className="p-5 sm:p-6">
+          <CardHeading icon={MonitorSmartphone}>Sesiones abiertas</CardHeading>
           <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
             ¿Entraste desde otro dispositivo y no querés dejarlo activo? Cerrá tu sesión en todos lados de una vez.
           </p>
-          <AlertDialog>
-            <AlertDialogTrigger asChild>
-              <Button
-                variant="outline"
-                className="mt-4 rounded-full border-destructive/40 text-destructive hover:border-destructive hover:bg-destructive/10 hover:text-destructive"
-              >
-                <LogOut className="h-4 w-4" aria-hidden /> Cerrar sesión en todos los dispositivos
-              </Button>
-            </AlertDialogTrigger>
-            <AlertDialogContent>
-              <AlertDialogHeader>
-                <AlertDialogTitle className="font-display">¿Cerrar sesión en todos lados?</AlertDialogTitle>
-                <AlertDialogDescription>
-                  Se cierra tu sesión en este navegador y en cualquier otro dispositivo donde hayas ingresado. Vas a tener
-                  que volver a iniciar sesión.
-                </AlertDialogDescription>
-              </AlertDialogHeader>
-              <AlertDialogFooter>
-                <AlertDialogCancel className="rounded-full">Cancelar</AlertDialogCancel>
-                <AlertDialogAction
-                  className="rounded-full bg-destructive text-background hover:bg-destructive/90"
-                  onClick={(e) => {
-                    e.preventDefault(); // mantener el dialog abierto mientras viaja el request
-                    logoutAllMutation.mutate();
-                  }}
+          <div className="mt-4 flex justify-center">
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <Button
+                  variant="outline"
+                  className="h-auto min-h-11 max-w-full rounded-full border-[1.5px] border-destructive py-2.5 text-left whitespace-normal text-destructive hover:bg-destructive/10 hover:text-destructive"
                 >
-                  {logoutAllMutation.isPending && <Loader2 className="h-4 w-4 animate-spin" aria-hidden />}
-                  Cerrar todo
-                </AlertDialogAction>
-              </AlertDialogFooter>
-            </AlertDialogContent>
-          </AlertDialog>
+                  <LogOut className="h-4 w-4" aria-hidden /> Cerrar sesión en todos los dispositivos
+                </Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle className="font-display">¿Cerrar sesión en todos lados?</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    Se cierra tu sesión en este navegador y en cualquier otro dispositivo donde hayas ingresado. Vas a tener
+                    que volver a iniciar sesión.
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel className={OUTLINE_BTN}>Cancelar</AlertDialogCancel>
+                  <AlertDialogAction
+                    className="rounded-full bg-primary text-primary-foreground hover:bg-primary/90"
+                    onClick={(e) => {
+                      e.preventDefault(); // mantener el dialog abierto mientras viaja el request
+                      logoutAllMutation.mutate();
+                    }}
+                  >
+                    {logoutAllMutation.isPending && <Loader2 className="h-4 w-4 animate-spin" aria-hidden />}
+                    Cerrar todo
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
+          </div>
         </CardContent>
       </Card>
     </div>
@@ -693,12 +749,17 @@ function SecurityTab() {
 function ActivityTab() {
   return (
     <div className="space-y-4">
-      <ActivityHistory />
-      <div className="text-center">
-        <Button variant="link" className="text-amber-strong" onClick={() => navigate('/plans')}>
-          <Coins className="h-4 w-4" aria-hidden /> Ver fichas
-        </Button>
-      </div>
+      <ActivityHistory
+        footer={
+          /* Como el chip de fichas de «Perfil» del diseño: píldora voice con la monedita dorada */
+          <Button
+            className="h-11 gap-2 rounded-[22px] bg-voice px-[18px] text-[15px] font-bold tracking-[0.02em] text-on-voice hover:bg-voice/90"
+            onClick={() => navigate('/plans')}
+          >
+            <CoinIcon className="size-[18px] text-[var(--m-gold)]" aria-hidden /> Ver fichas
+          </Button>
+        }
+      />
     </div>
   );
 }
@@ -723,17 +784,34 @@ function CommunityTab({ user }: { user: MeProfile }) {
   const follows = followsQuery.data?.items ?? [];
   const followers = followersQuery.data?.items ?? [];
   const blocks = blocksQuery.data?.items ?? [];
+  const [sub, setSub] = useState<'follows' | 'followers' | 'blocks'>('follows');
+  const total = (q: { data?: { items: unknown[]; pagination?: { total: number } } }) =>
+    q.data ? (q.data.pagination?.total ?? q.data.items.length) : undefined;
 
   return (
     <div className="space-y-4">
+      {/* Selector de grupo como el del diseño: Seguís / Te siguen / Bloqueados, con su cantidad */}
+      <SegmentedTabs
+        ariaLabel="Ver comunidad"
+        variant="trash"
+        value={sub}
+        onChange={setSub}
+        tabs={[
+          { key: 'follows', label: 'Seguís', icon: UserPlus, count: total(followsQuery) },
+          { key: 'followers', label: 'Te siguen', icon: Users, count: total(followersQuery) },
+          { key: 'blocks', label: 'Bloqueados', icon: Ban, count: total(blocksQuery) },
+        ]}
+      />
+
       {/* A quién seguís */}
-      <Card className="rounded-cover border-border/70 bg-surface">
-        <CardContent className="p-5 sm:p-6">
-          <h3 className="font-display text-lg font-bold text-foreground">A quién seguís</h3>
-          <p className="mt-1 text-sm leading-relaxed text-muted-foreground">
+      {sub === 'follows' && (
+      <Card className={CARD}>
+        <CardContent className="p-5">
+          <CardHeading icon={UserPlus}>A quién seguís</CardHeading>
+          <p className="mt-2 text-[15.5px] leading-[1.5] text-[var(--m-foreground-secondary)]">
             Los creadores cuyo contenido querés ver primero en la comunidad.
           </p>
-          <div className="mt-3">
+          <div className="mt-3.5">
             {followsQuery.isLoading ? (
               <LoadingRows count={3} />
             ) : followsQuery.isError ? (
@@ -743,9 +821,7 @@ function CommunityTab({ user }: { user: MeProfile }) {
                 className="py-6"
               />
             ) : follows.length === 0 ? (
-              <EmptyState
-                variant="studio"
-                actionIcon={null}
+              <DashedEmpty
                 icon={<UserPlus className="h-6 w-6" />}
                 title="Todavía no seguís a nadie"
                 description="Andá a la comunidad, escuchá lo que están creando y seguí a quien te guste."
@@ -753,7 +829,7 @@ function CommunityTab({ user }: { user: MeProfile }) {
                 actionTo="/community"
               />
             ) : (
-              <ul className="divide-y divide-border/60" aria-label="Creadores que seguís">
+              <ul className="divide-y divide-[var(--m-separator)]" aria-label="Creadores que seguís">
                 {follows.map((row) => (
                   <FollowsRow key={row.id} row={row} />
                 ))}
@@ -762,15 +838,17 @@ function CommunityTab({ user }: { user: MeProfile }) {
           </div>
         </CardContent>
       </Card>
+      )}
 
       {/* Quién te sigue */}
-      <Card className="rounded-cover border-border/70 bg-surface">
-        <CardContent className="p-5 sm:p-6">
-          <h3 className="font-display text-lg font-bold text-foreground">Quién te sigue</h3>
-          <p className="mt-1 text-sm leading-relaxed text-muted-foreground">
+      {sub === 'followers' && (
+      <Card className={CARD}>
+        <CardContent className="p-5">
+          <CardHeading icon={Users}>Quién te sigue</CardHeading>
+          <p className="mt-2 text-[15.5px] leading-[1.5] text-[var(--m-foreground-secondary)]">
             Dejá el gesto devuelto: seguilos con un toque para no perderte lo que publican.
           </p>
-          <div className="mt-3">
+          <div className="mt-3.5">
             {followersQuery.isLoading ? (
               <LoadingRows count={3} />
             ) : followersQuery.isError ? (
@@ -780,9 +858,7 @@ function CommunityTab({ user }: { user: MeProfile }) {
                 className="py-6"
               />
             ) : followers.length === 0 ? (
-              <EmptyState
-                variant="studio"
-                actionIcon={null}
+              <DashedEmpty
                 icon={<Users className="h-6 w-6" />}
                 title="Todavía no te sigue nadie"
                 description="Publicá tus canciones y compartilas: cuando alguien te siga, lo vas a ver acá."
@@ -790,7 +866,7 @@ function CommunityTab({ user }: { user: MeProfile }) {
                 actionTo="/community"
               />
             ) : (
-              <ul className="divide-y divide-border/60" aria-label="Creadores que te siguen">
+              <ul className="divide-y divide-[var(--m-separator)]" aria-label="Creadores que te siguen">
                 {followers.map((row) => (
                   <FollowersRow key={row.id} row={row} />
                 ))}
@@ -799,15 +875,17 @@ function CommunityTab({ user }: { user: MeProfile }) {
           </div>
         </CardContent>
       </Card>
+      )}
 
       {/* Bloqueados */}
-      <Card className="rounded-cover border-border/70 bg-surface">
-        <CardContent className="p-5 sm:p-6">
-          <h3 className="font-display text-lg font-bold text-foreground">Bloqueados</h3>
-          <p className="mt-1 text-sm leading-relaxed text-muted-foreground">
+      {sub === 'blocks' && (
+      <Card className={CARD}>
+        <CardContent className="p-5">
+          <CardHeading icon={Ban}>Bloqueados</CardHeading>
+          <p className="mt-2 text-[15.5px] leading-[1.5] text-[var(--m-foreground-secondary)]">
             Las personas bloqueadas no ven tu contenido ni pueden seguirte, y vos no ves el suyo.
           </p>
-          <div className="mt-3">
+          <div className="mt-3.5">
             {blocksQuery.isLoading ? (
               <LoadingRows count={2} />
             ) : blocksQuery.isError ? (
@@ -817,14 +895,13 @@ function CommunityTab({ user }: { user: MeProfile }) {
                 className="py-6"
               />
             ) : blocks.length === 0 ? (
-              <EmptyState
+              <DashedEmpty
                 icon={<Ban className="h-6 w-6" />}
                 title="No bloqueaste a nadie"
                 description="Si alguien te molesta en la comunidad, podés bloquearlo desde su perfil público."
-                className="py-8"
               />
             ) : (
-              <ul className="divide-y divide-border/60" aria-label="Personas bloqueadas">
+              <ul className="divide-y divide-[var(--m-separator)]" aria-label="Personas bloqueadas">
                 {blocks.map((row) => (
                   <BlockedRow key={row.id} row={row} />
                 ))}
@@ -833,6 +910,7 @@ function CommunityTab({ user }: { user: MeProfile }) {
           </div>
         </CardContent>
       </Card>
+      )}
     </div>
   );
 }
@@ -846,17 +924,17 @@ function CommunityRow({
   action?: React.ReactNode;
 }) {
   return (
-    <li className="flex items-center gap-3.5 py-3">
+    <li className="flex min-h-[72px] items-center gap-2 py-3 sm:gap-3.5">
       <button
         type="button"
         onClick={() => navigate(`/user/${row.id}`)}
         aria-label={`Ver el perfil de ${row.name}`}
-        className="flex min-w-0 flex-1 items-center gap-3 rounded-xl p-1 text-left transition-colors hover:bg-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        className="flex min-w-0 flex-1 items-center gap-3 rounded-full p-1 pr-3 text-left transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
       >
-        <AuthAvatar src={row.avatarUrl} name={row.name} className="h-10 w-10 shrink-0" />
+        <AuthAvatar src={row.avatarUrl} name={row.name} className="size-12 shrink-0 border-0 ring-2 ring-[var(--m-gold)] ring-offset-2 ring-offset-[var(--m-input)]" />
         <span className="min-w-0 flex-1">
-          <span className="block truncate text-sm font-semibold text-foreground">{row.name}</span>
-          {meta ? <span className="block text-xs text-muted-foreground">{meta}</span> : null}
+          <span className="block truncate text-[15px] font-bold leading-tight text-foreground">{row.name}</span>
+          {meta ? <span className="block text-[13px] text-muted-foreground">{meta}</span> : null}
         </span>
       </button>
       {action}
@@ -896,21 +974,42 @@ function FollowsRow({ row }: { row: CommunityUserCard }) {
       row={row}
       meta={`${formatNumber(row.followersCount ?? 0)} seguidores`}
       action={
-        <Button
-          variant="ghost"
-          size="sm"
-          disabled={unfollowMutation.isPending}
-          aria-label={`Dejar de seguir a ${row.name}`}
-          onClick={() => unfollowMutation.mutate()}
-          className="shrink-0 rounded-full px-3 text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
-        >
-          {unfollowMutation.isPending ? (
-            <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
-          ) : (
-            <UserMinus className="h-4 w-4" aria-hidden />
-          )}
-          Dejar de seguir
-        </Button>
+        /* Pide confirmación antes de dejar de seguir */
+        <AlertDialog>
+          <AlertDialogTrigger asChild>
+            <Button
+              variant="ghost"
+              size="sm"
+              disabled={unfollowMutation.isPending}
+              aria-label={`Dejar de seguir a ${row.name}`}
+              className="shrink-0 rounded-full px-3 text-[15px] font-bold text-[var(--m-foreground-secondary)] transition-colors hover:bg-destructive/10 hover:text-destructive"
+            >
+              {unfollowMutation.isPending ? (
+                <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+              ) : (
+                <UserMinus className="h-4 w-4" aria-hidden />
+              )}
+              <span className="max-[420px]:sr-only">Dejar de seguir</span>
+            </Button>
+          </AlertDialogTrigger>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle className="font-display">¿Dejar de seguir a {row.name}?</AlertDialogTitle>
+              <AlertDialogDescription>
+                Su contenido deja de aparecer en tu feed de seguidos. Podés volver a seguirlo cuando quieras desde su perfil.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel className={OUTLINE_BTN}>Cancelar</AlertDialogCancel>
+              <AlertDialogAction
+                className="rounded-full max-sm:text-[12px]! bg-primary text-primary-foreground hover:bg-primary/90"
+                onClick={() => unfollowMutation.mutate()}
+              >
+                Dejar de seguir
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       }
     />
   );
@@ -950,7 +1049,7 @@ function FollowersRow({ row }: { row: CommunityUserCard }) {
     return (
       <CommunityRow
         row={row}
-        meta={`${formatNumber(row.followersCount ?? 0)} seguidores · te sigue`}
+        meta={`${formatNumber(row.followersCount ?? 0)} seguidores`}
       />
     );
   }
@@ -966,7 +1065,7 @@ function FollowersRow({ row }: { row: CommunityUserCard }) {
           disabled={followMutation.isPending}
           aria-label={`Seguir a ${row.name}`}
           onClick={() => followMutation.mutate()}
-          className="shrink-0 rounded-full border-amber/40 bg-amber/10 text-amber-strong transition-colors hover:border-amber hover:bg-amber/20 hover:text-amber-strong"
+          className="shrink-0 rounded-full border-[1.5px] border-line px-5 text-foreground hover:bg-accent"
         >
           {followMutation.isPending ? (
             <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
@@ -984,6 +1083,7 @@ function FollowersRow({ row }: { row: CommunityUserCard }) {
 function BlockedRow({ row }: { row: CommunityUserCard }) {
   const qc = useQueryClient();
   const { toast } = useToast();
+  const [confirmOpen, setConfirmOpen] = useState(false);
 
   const unblockMutation = useMutation({
     mutationFn: () => profileApi.unblock(row.id),
@@ -1006,21 +1106,35 @@ function BlockedRow({ row }: { row: CommunityUserCard }) {
     <CommunityRow
       row={row}
       action={
+        <>
         <Button
           variant="ghost"
           size="sm"
           disabled={unblockMutation.isPending}
           aria-label={`Desbloquear a ${row.name}`}
-          onClick={() => unblockMutation.mutate()}
-          className="shrink-0 rounded-full px-3 text-muted-foreground transition-colors hover:bg-amber/10 hover:text-amber-strong"
+          onClick={() => setConfirmOpen(true)}
+          className="shrink-0 rounded-full px-3 text-[15px] font-bold text-[var(--m-foreground-secondary)] transition-colors hover:bg-accent hover:text-foreground"
         >
           {unblockMutation.isPending ? (
             <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
           ) : (
             <Unlock className="h-4 w-4" aria-hidden />
           )}
-          Desbloquear
+          <span className="max-[420px]:sr-only">Desbloquear</span>
         </Button>
+        <ConfirmDialog
+          open={confirmOpen}
+          onOpenChange={setConfirmOpen}
+          title={`¿Desbloquear a ${row.name}?`}
+          description="Van a poder verse el contenido y seguirse otra vez."
+          actionLabel="Desbloquear"
+          pending={unblockMutation.isPending}
+          onConfirm={() => {
+            setConfirmOpen(false);
+            unblockMutation.mutate();
+          }}
+        />
+        </>
       }
     />
   );
@@ -1058,6 +1172,7 @@ function useLocalPref(key: string, defaultValue: boolean) {
 function SettingsTab() {
   const { toast } = useToast();
   const [loggingOut, setLoggingOut] = useState(false);
+  const [confirmLogout, setConfirmLogout] = useState(false);
   const [notifications, setNotifications] = useLocalPref(PREF_NOTIFICATIONS, true);
   const [autoplay, setAutoplay] = useLocalPref(PREF_AUTOPLAY, false);
 
@@ -1074,71 +1189,77 @@ function SettingsTab() {
 
   return (
     <div className="space-y-4">
-      {/* Preferencias (solo este navegador) */}
-      <Card className="rounded-cover border-border/70 bg-surface">
-        <CardContent className="p-6">
-          <h3 className="font-display text-lg font-bold text-foreground">Preferencias</h3>
-          <div className="mt-2 divide-y divide-border/60">
-            <div className="flex items-center justify-between gap-4 py-4">
-              <div className="min-w-0">
-                <Label htmlFor="pref-notifications" className="text-sm font-medium text-foreground">
-                  Notificaciones de generaciones
-                </Label>
-                <p className="mt-0.5 text-xs leading-relaxed text-muted-foreground">
-                  Avisos en pantalla cuando una generación termina o falla (afecta los toasts).
-                </p>
-              </div>
-              <Switch
-                id="pref-notifications"
-                checked={notifications}
-                onCheckedChange={setNotifications}
-                aria-label="Notificaciones de generaciones"
-              />
-            </div>
-            <div className="flex items-center justify-between gap-4 py-4">
-              <div className="min-w-0">
-                <Label htmlFor="pref-autoplay" className="text-sm font-medium text-foreground">
-                  Reproducción automática
-                </Label>
-                <p className="mt-0.5 text-xs leading-relaxed text-muted-foreground">
-                  Reproducir la canción apenas termina de generarse.
-                </p>
-              </div>
-              <Switch id="pref-autoplay" checked={autoplay} onCheckedChange={setAutoplay} aria-label="Reproducción automática" />
-            </div>
-          </div>
-          <p className="text-xs text-muted-foreground">Estas preferencias se guardan solo en este navegador.</p>
-        </CardContent>
-      </Card>
-
-      {/* Acerca de */}
-      <Card className="rounded-cover border-border/70 bg-surface">
-        <CardContent className="flex flex-col gap-4 p-6 sm:flex-row sm:items-center sm:justify-between">
-          <div className="min-w-0">
-            <h3 className="font-display text-lg font-bold text-foreground">Acerca de Melodya</h3>
-            <p className="mt-1 text-sm text-muted-foreground">Melodya · v1 — web</p>
-          </div>
-          <Button variant="outline" className="shrink-0 rounded-full" onClick={() => navigate('/community')}>
-            <Heart className="h-4 w-4 text-coral" aria-hidden /> Explorar la comunidad
-          </Button>
+      {/* Preferencias (solo este navegador): mismo contenedor que «Publicación» de una canción propia */}
+      <Card className="h-fit rounded-cover border-border/70 bg-surface" aria-label="Preferencias">
+        <CardHeader className="pb-0">
+          <CardTitle className="flex items-center gap-2 font-display text-lg font-bold">
+            <span aria-hidden className="flex size-8 shrink-0 items-center justify-center rounded-full bg-gold text-on-gold">
+              <Settings2 className="h-4 w-4" />
+            </span>{' '}
+            Preferencias
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="-mt-2 flex flex-col gap-0.5 pt-0">
+          <label htmlFor="pref-notifications" className="flex min-h-10 w-full cursor-pointer items-center gap-3 py-1">
+            <span className="flex min-w-0 flex-1 flex-col gap-0.5 text-left">
+              <b className="text-[15px] font-bold">Notificaciones de generaciones</b>
+              <span className="text-xs leading-relaxed text-muted-foreground">
+                Avisos en pantalla cuando una generación termina o falla (afecta los toasts).
+              </span>
+            </span>
+            <Switch
+              id="pref-notifications"
+              checked={notifications}
+              onCheckedChange={setNotifications}
+              aria-label="Notificaciones de generaciones"
+              className="data-[state=checked]:border-gold data-[state=checked]:bg-gold dark:data-[state=checked]:[&>span]:bg-[#131C33]"
+            />
+          </label>
+          <label htmlFor="pref-autoplay" className="flex min-h-10 w-full cursor-pointer items-center gap-3 py-1">
+            <span className="flex min-w-0 flex-1 flex-col gap-0.5 text-left">
+              <b className="text-[15px] font-bold">Reproducción automática</b>
+              <span className="text-xs leading-relaxed text-muted-foreground">Reproducir la canción apenas termina de generarse.</span>
+            </span>
+            <Switch
+              id="pref-autoplay"
+              checked={autoplay}
+              onCheckedChange={setAutoplay}
+              aria-label="Reproducción automática"
+              className="data-[state=checked]:border-gold data-[state=checked]:bg-gold dark:data-[state=checked]:[&>span]:bg-[#131C33]"
+            />
+          </label>
+          <p className="pt-3 text-[13px] font-medium text-gold">Estas preferencias se guardan solo en este navegador.</p>
         </CardContent>
       </Card>
 
       {/* Sesión */}
-      <Card className="rounded-cover border-border/70 bg-surface">
-        <CardContent className="flex flex-col gap-4 p-6 sm:flex-row sm:items-center sm:justify-between">
+      <Card className={CARD}>
+        <CardContent className="flex flex-col gap-4 p-5 sm:flex-row sm:p-6 sm:items-center sm:justify-between">
           <div className="min-w-0">
-            <h3 className="font-display text-lg font-bold text-foreground">Cerrar sesión</h3>
+            <CardHeading icon={LogOut}>Cerrar sesión</CardHeading>
             <p className="mt-1 text-sm leading-relaxed text-muted-foreground">
               Salís de tu cuenta en este dispositivo. Tus canciones quedan guardadas.
             </p>
           </div>
-          <Button variant="destructive" className="shrink-0 rounded-full" onClick={() => void handleLogout()} disabled={loggingOut}>
+          <Button className="shrink-0 rounded-full" onClick={() => setConfirmLogout(true)} disabled={loggingOut}>
             {loggingOut ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <LogOut className="h-4 w-4" aria-hidden />}
             Cerrar sesión
           </Button>
         </CardContent>
       </Card>
+
+      <ConfirmDialog
+        open={confirmLogout}
+        onOpenChange={setConfirmLogout}
+        title="¿Cerrar sesión?"
+        description="Salís de tu cuenta en este dispositivo. Tus canciones quedan guardadas."
+        actionLabel="Cerrar sesión"
+        pending={loggingOut}
+        onConfirm={() => {
+          setConfirmLogout(false);
+          void handleLogout();
+        }}
+      />
     </div>
   );
 }

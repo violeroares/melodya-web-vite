@@ -1,3 +1,4 @@
+'use client';
 
 /**
  * MELODYA WEB — ExpandedPlayer ("Sonando ahora"): reproductor a pantalla
@@ -699,22 +700,25 @@ export function ExpandedPlayer({ open, onClose, audioRef }: { open: boolean; onC
                     <TooltipContent side="top">Compartir</TooltipContent>
                   </Tooltip>
                   )}
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => void download()}
-                        disabled={downloading || (!downloadState.allowed && !downloadGate.locked) || !ownDownloadable}
-                        aria-label="Descargar canción"
-                        className="relative h-11 [@media(max-height:600px)]:h-9 w-full min-w-0 rounded-full"
-                      >
-                        {downloading ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <Download className="h-4 w-4" aria-hidden />}
-                        {ownDownloadable && <RequiredPlanBadge capability="DOWNLOAD_AUDIO" showCrownOnly className="absolute -right-0.5 -top-0.5 px-1 py-1" />}
-                      </Button>
-                    </TooltipTrigger>
-                    <TooltipContent side="top">{track?.trashed ? 'No disponible: está en la Papelera' : !ownDownloadable ? 'Solo podés descargar tus propias canciones' : downloadGate.locked ? `${downloadGate.copy?.title ?? 'No incluido en tu plan'} · tocá para ver los planes` : downloadState.reason ?? (downloadState.hint ? `Descargar canción · ${downloadState.hint}` : 'Descargar canción')}</TooltipContent>
-                  </Tooltip>
+                  {/* Descargar: solo en canciones propias y activas; si no se puede (ajena, sample, Papelera) el botón se oculta */}
+                  {ownDownloadable && (
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => void download()}
+                          disabled={downloading || (!downloadState.allowed && !downloadGate.locked)}
+                          aria-label="Descargar canción"
+                          className="relative h-11 [@media(max-height:600px)]:h-9 w-full min-w-0 rounded-full"
+                        >
+                          {downloading ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <Download className="h-4 w-4" aria-hidden />}
+                          <RequiredPlanBadge capability="DOWNLOAD_AUDIO" showCrownOnly className="absolute -right-0.5 -top-0.5 px-1 py-1" />
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent side="top">{track?.trashed ? 'No disponible: está en la Papelera' : !ownDownloadable ? 'Solo podés descargar tus propias canciones' : downloadGate.locked ? `${downloadGate.copy?.title ?? 'No incluido en tu plan'} · tocá para ver los planes` : downloadState.reason ?? (downloadState.hint ? `Descargar canción · ${downloadState.hint}` : 'Descargar canción')}</TooltipContent>
+                    </Tooltip>
+                  )}
                 </div>
               </TooltipProvider>
             </div>

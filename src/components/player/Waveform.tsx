@@ -1,3 +1,4 @@
+'use client';
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { cn } from '@/lib/utils';
@@ -26,7 +27,21 @@ function waveHeights(seed: string): number[] {
 /** Progreso como forma de onda (design-V2): lo reproducido en dorado; el control real es un range nativo (teclado y lectores). */
 export function Waveform({ seed, position, duration, onSeek, className, onVoice }: { seed: string; position: number; duration: number; onSeek: (sec: number) => void; className?: string; onVoice?: boolean }) {
   const heights = useMemo(() => waveHeights(seed), [seed]);
-  const ratio = duration > 0 ? Math.min(1, position / duration) : 0;
+  /* Mientras el dedo/mouse arrastra, la onda sigue al puntero (vista previa) pero el audio se mueve UNA sola vez, al soltar:
+     el range nativo emite «input» sin parar al arrastrar y cada uno hacía un seek al <audio> (en Safari/iOS, con streaming, eso se
+     traduce en saltos y un segundo salto cuando termina de bufferizar). Con teclado (sin puntero) el seek es inmediato. */
+  const [preview, setPreview] = useState<number | null>(null);
+  const pointerDownRef = useRef(false);
+  const pendingRef = useRef<number | null>(null);
+  const commit = () => {
+    pointerDownRef.current = false;
+    const v = pendingRef.current;
+    pendingRef.current = null;
+    setPreview(null);
+    if (v !== null) onSeek(v);
+  };
+  const shown = preview ?? position;
+  const ratio = duration > 0 ? Math.min(1, shown / duration) : 0;
   const boxRef = useRef<HTMLDivElement>(null);
   const [count, setCount] = useState(WAVE_BARS);
   useEffect(() => {
@@ -56,8 +71,23 @@ export function Waveform({ seed, position, duration, onSeek, className, onVoice 
         min={0}
         max={duration || 30}
         step={0.5}
-        value={Math.min(position, duration || 30)}
-        onChange={(e) => onSeek(Number(e.target.value))}
+        value={Math.min(shown, duration || 30)}
+        onChange={(e) => {
+          const v = Number(e.target.value);
+          if (!pointerDownRef.current) {
+            onSeek(v);
+            return;
+          }
+          pendingRef.current = v;
+          setPreview(v);
+        }}
+        onPointerDown={() => {
+          pointerDownRef.current = true;
+        }}
+        onPointerUp={commit}
+        onPointerCancel={commit}
+        onTouchEnd={commit}
+        onBlur={commit}
         aria-label="Progreso de la canción"
         className="absolute inset-0 h-full w-full cursor-pointer opacity-0 outline-none"
       />

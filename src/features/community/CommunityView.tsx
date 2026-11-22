@@ -1,3 +1,4 @@
+'use client';
 
 /**
  * MELODYA WEB — CommunityView: feed público de la comunidad (ruta #/community).
@@ -23,8 +24,8 @@ import {
   useQueryClient,
 } from '@tanstack/react-query';
 import {
-  Flag, Heart, ListEnd, ListStart, Loader2, MessageCircle, MoreVertical, Pause, Play, PlayCircle, Radio, Search, Share2, Shuffle,
-  UserCheck, Users, X, SlidersHorizontal,
+  Clock, Flag, Headphones, Heart, ListEnd, ListStart, Loader2, MessageCircle, MoreVertical, Pause, Play, PlayCircle, Radio, Search, Share2, Shuffle,
+  UserCheck, Users, X, SlidersHorizontal, type LucideIcon,
 } from 'lucide-react';
 import { shareContent } from '@/lib/share';
 import { isRadioSort, radioShareUrl, startCommunityRadio } from '@/lib/radio';
@@ -38,6 +39,7 @@ import { useAuthStore } from '@/stores/auth';
 import { formatNumber, useDebounce } from '@/hooks';
 import { BannerSlot } from '@/components/banners';
 import { CoverArt, EmptyState, EqualizerBars, ErrorState, LoadingCards } from '@/components/common';
+import { SegmentedTabs } from '@/components/common/SegmentedTabs';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
@@ -52,10 +54,10 @@ import { communityReactionOptions } from '@/features/community/reaction-cache';
 import type { CommunitySong } from '@/types';
 
 /* ── constantes ── */
-const SORTS: Array<{ value: 'newest' | 'most_played' | 'most_liked'; label: string }> = [
-  { value: 'newest', label: 'Lo más nuevo' },
-  { value: 'most_played', label: 'Más escuchados' },
-  { value: 'most_liked', label: 'Más queridos' },
+const SORTS: Array<{ value: 'newest' | 'most_played' | 'most_liked'; label: string; icon: LucideIcon }> = [
+  { value: 'newest', label: 'Lo más nuevo', icon: Clock },
+  { value: 'most_played', label: 'Más escuchados', icon: Headphones },
+  { value: 'most_liked', label: 'Más queridos', icon: Heart },
 ];
 const FEED_PAGE_SIZE = 12;
 
@@ -572,26 +574,14 @@ export function CommunityView() {
 
       {/* orden + búsqueda */}
       <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-        {/* Segmentado (design-V2): grupo de chips con borde, la opción activa invierte los colores */}
-        <div className="flex w-full gap-1 rounded-[28px] border-[1.5px] border-foreground/50 p-1 lg:w-auto" role="group" aria-label="Orden del feed">
-          {SORTS.map((s) => {
-            const active = sort === s.value;
-            return (
-              <button
-                key={s.value}
-                type="button"
-                onClick={() => setSort(s.value)}
-                aria-pressed={active}
-                className={cn(
-                  'flex h-11 min-w-0 flex-1 items-center justify-center whitespace-nowrap rounded-[22px] px-1 text-[12.5px] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:flex-none sm:px-4 sm:text-[13px]',
-                  active ? 'bg-foreground font-bold text-background' : 'font-medium text-foreground hover:bg-foreground/10'
-                )}
-              >
-                {s.label}
-              </button>
-            );
-          })}
-        </div>
+        {/* Segmentado (design-V2): el mismo selector de grupo del sistema */}
+        <SegmentedTabs
+          tabs={SORTS.map((o) => ({ key: o.value, label: o.label, icon: o.icon }))}
+          value={sort}
+          onChange={setSort}
+          ariaLabel="Orden del feed"
+          className="w-full lg:w-auto"
+        />
         {/* búsqueda (campo) · filtros (círculo dorado aparte) */}
         <div className="flex w-full items-center gap-2 lg:w-auto">
           <div className="relative min-w-0 flex-1 lg:w-80 lg:flex-none">
@@ -602,7 +592,7 @@ export function CommunityView() {
               type="search"
               placeholder="Buscá por título o creador…"
               aria-label="Buscar canciones en la comunidad"
-              className="h-11 rounded-full pl-10 text-sm font-normal"
+              className="h-11 rounded-full pl-10 text-base font-normal md:text-sm"
             />
           </div>
           <button
