@@ -56,6 +56,7 @@ import {
 import { DISCARD_DESCRIPTION, DISCARD_TITLE, UNCERTAIN_SUBMIT_TEXT } from './pending-copy';
 import { VOICE_EXPIRED_TEXT, VOICE_EXPIRED_TITLE, voiceExpiredSample } from '@/features/voice/voice-expiry';
 import { SolarSystem, planetIcon, PLANET_DOT } from './SolarSystem';
+import { ConfirmDialog } from '@/features/library/library-utils';
 import { CompositionEditor, StyleEditor, VoiceEditor, ReferenceEditor, ProductionEditor, CreativityEditor } from './PlanetEditors';
 import {
   emptySong, isEmptySong, parseSong, audioWeightApplies, availability, addPlanet, removePlanet, updatePlanet, validateSong,
@@ -326,7 +327,16 @@ export function CreatorWizard() {
   };
 
   // Creación normal: vacía el creador y su borrador. En «otra versión» no existe: ahí se usa «Limpiar planetas» (no toca el borrador de otra canción).
-  const restart = () => {
+  const collapseRef = useRef<(() => boolean) | null>(null);
+  const registerCollapse = useCallback((fn: (() => boolean) | null) => { collapseRef.current = fn; }, []);
+  /* Mientras el agujero negro se cierra, el cartel «Empezá por Composición» espera: aparece junto con el sistema vacío que renace (a los 0,95 s). */
+  const [restarting, setRestarting] = useState(false);
+  const [restartConfirm, setRestartConfirm] = useState(false);
+  const restart = (animate = false) => {
+    if (animate && collapseRef.current?.()) { // «agujero negro»: se anima con el sistema de antes, ANTES de vaciarlo
+      setRestarting(true);
+      window.setTimeout(() => setRestarting(false), 950);
+    }
     if (recoveryActive) rec.end('DISMISSED'); // descartar la recuperación NO borra la generación fallida: sigue en el historial
     setNormalSong(emptySong);
     setPendingPlanets([]);
@@ -687,7 +697,7 @@ export function CreatorWizard() {
           {!hasSource && !empty && (
             <button
               type="button"
-              onClick={() => (recoveryActive ? setDiscardRecoveryOpen(true) : restart())}
+              onClick={() => (recoveryActive ? setDiscardRecoveryOpen(true) : setRestartConfirm(true))}
               disabled={recoveryActive && pending !== null}
               title={recoveryActive && pending !== null ? 'Primero confirmá tu pedido anterior (arriba).' : undefined}
               className={cn(HEADER_ACTION, 'disabled:cursor-not-allowed disabled:opacity-50')}
@@ -750,8 +760,17 @@ export function CreatorWizard() {
         />
       )}
 
-      {empty && !versionPending && !recoveryActive && (
-        <div className="mb-5 flex flex-col gap-3 rounded-[28px] bg-surface p-4 text-sm sm:flex-row sm:items-center sm:rounded-full sm:py-3 sm:pr-3 sm:pl-5">
+      <ConfirmDialog
+        open={restartConfirm}
+        onOpenChange={setRestartConfirm}
+        title="¿Empezar de cero?"
+        description="Vas a quitar todo lo que agregaste a esta canción y se borra el borrador."
+        actionLabel="Empezar de cero"
+        onConfirm={() => { setRestartConfirm(false); restart(true); }}
+      />
+
+      {empty && !restarting && !versionPending && !recoveryActive && (
+        <div className="animate-in fade-in mb-5 flex flex-col gap-3 rounded-[28px] bg-surface p-4 text-sm sm:flex-row sm:items-center sm:rounded-full sm:py-3 sm:pr-3 sm:pl-5">
           <div className="flex min-w-0 flex-1 items-center gap-3">
           <Sparkles className="h-5 w-5 shrink-0 text-amber-strong" aria-hidden />
           <p className="min-w-0 flex-1">Empezá por <span className="font-semibold">Composición</span>: contanos una idea, pegá tu letra o pedí solo música.</p>
@@ -762,7 +781,7 @@ export function CreatorWizard() {
         </div>
       )}
 
-      <SolarSystem song={song} caps={caps} issues={issues} onOpenPlanet={openEditor} onOpenCatalog={openCatalog} registerRef={registerRef} launching={launching} onLaunchEnd={() => setLaunching(false)} arrival={arrival} pending={[...pendingPlanets, ...basePending]} onArrivalEnd={() => setArrival(null)} />
+      <SolarSystem song={song} caps={caps} issues={issues} onOpenPlanet={openEditor} onOpenCatalog={openCatalog} registerRef={registerRef} registerCollapse={registerCollapse} launching={launching} onLaunchEnd={() => setLaunching(false)} arrival={arrival} pending={[...pendingPlanets, ...basePending]} onArrivalEnd={() => setArrival(null)} />
       </div>
 
       {/* ── Revisión antes de generar ── */}
@@ -1015,7 +1034,7 @@ export function CreatorWizard() {
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Volver</AlertDialogCancel>
-            <AlertDialogAction onClick={() => { setDiscardRecoveryOpen(false); restart(); }}>Empezar de cero</AlertDialogAction>
+            <AlertDialogAction onClick={() => { setDiscardRecoveryOpen(false); restart(true); }}>Empezar de cero</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

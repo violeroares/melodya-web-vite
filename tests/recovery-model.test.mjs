@@ -431,7 +431,9 @@ test('la confirmación de haber recuperado es transitoria (toast), no un bloque 
 
 test('«Empezar de cero» durante una recuperación pide confirmación y no oculta un pedido pendiente', () => {
   const w = read('src/features/creator/CreatorWizard.tsx');
-  assert.match(w, /recoveryActive \? setDiscardRecoveryOpen\(true\) : restart\(\)/);
+  assert.match(w, /recoveryActive \? setDiscardRecoveryOpen\(true\) : setRestartConfirm\(true\)/);
+  // Y al confirmar, «Empezar de cero» reinicia con la animación (restart(true)), tanto desde el aviso de recuperación como desde el diálogo normal.
+  assert.match(w, /restart\(true\)/);
   assert.match(w, /disabled=\{recoveryActive && pending !== null\}/);
   assert.match(w, /pendingBlocks=\{pending !== null\}/);
   assert.match(w, /¿Empezar de cero\?/);

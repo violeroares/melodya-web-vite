@@ -206,7 +206,9 @@ function ArrivalFlight({ boxRef, id, orbit, angle, radii, onDone }: { boxRef: Re
   return <div ref={layerRef} aria-hidden className="pointer-events-none absolute inset-0 z-20" />;
 }
 
-export function SolarSystem({ song, caps, issues, onOpenPlanet, onOpenCatalog, registerRef, launching, onLaunchEnd, arrival, pending, onArrivalEnd }: {
+export function SolarSystem({ song, caps, issues, onOpenPlanet, onOpenCatalog, registerRef, launching, onLaunchEnd, arrival, pending, onArrivalEnd, registerCollapse }: {
+  /** Entrega la función que anima «Empezar de nuevo» (el sistema de antes se traga como por un agujero negro). Se llama justo ANTES de vaciar la canción. */
+  registerCollapse?: (collapse: (() => boolean) | null) => void;
   /** Elementos agregados que todavía no se completaron con «Listo»: se dibujan punteados. */
   pending?: PlanetId[];
   /** Elemento recién agregado cuyo editor ya se cerró: vuela desde el «+» hasta su lugar. */
@@ -388,6 +390,86 @@ export function SolarSystem({ song, caps, issues, onOpenPlanet, onOpenCatalog, r
       box.querySelector<SVGElement>('svg')?.style.removeProperty('z-index');
     };
   }, [launching, R]);
+
+  /* ── «Empezar de nuevo»: «Crear · Sistema solar · capa sobre la barra» del prototipo (design-V2), 1,2 s ──
+     El sistema de antes (una copia) gira 252° y se encoge hacia el centro como tragado por un agujero negro; un punto negro crece y se cierra,
+     sale una onda dorada y el sistema vacío renace desde el centro. Con reduced-motion no hay animación. */
+  React.useEffect(() => {
+    if (!registerCollapse) return;
+    registerCollapse(() => {
+      const box = boxRef.current;
+      const host = box?.parentElement;
+      if (!box || !host || window.matchMedia('(prefers-reduced-motion: reduce)').matches) return false;
+      const S = box.clientWidth;
+      const c = S / 2;
+      const k = (S * ((R * 1.22) / 100)) / 154;
+      const clamp = (x: number) => Math.max(0, Math.min(1, x));
+      const seg = (t: number, a: number, b: number) => clamp((t - a) / (b - a));
+      const eOut = (x: number) => 1 - Math.pow(1 - x, 3);
+      const eIn = (x: number) => x * x * x;
+      const place = (el: HTMLElement | SVGElement) => {
+        el.style.position = 'absolute';
+        el.style.left = `${box.offsetLeft}px`;
+        el.style.top = `${box.offsetTop}px`;
+        el.style.width = el.style.height = `${S}px`;
+        el.style.margin = '0';
+        el.style.pointerEvents = 'none';
+      };
+      const old = box.cloneNode(true) as HTMLElement;
+      old.setAttribute('aria-hidden', 'true');
+      old.setAttribute('inert', '');
+      old.querySelectorAll('[id]').forEach((n) => n.removeAttribute('id'));
+      place(old);
+      old.style.zIndex = '30';
+      old.style.maxWidth = 'none';
+      const fx = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+      fx.setAttribute('aria-hidden', 'true');
+      fx.setAttribute('viewBox', `0 0 ${S} ${S}`);
+      place(fx);
+      fx.style.zIndex = '31';
+      fx.style.overflow = 'visible';
+      fx.innerHTML = `<circle cx="${c}" cy="${c}" r="0" fill="#05070d" data-h/><circle cx="${c}" cy="${c}" r="0" fill="none" stroke="var(--m-gold)" stroke-width="3" data-w/>`;
+      host.appendChild(old);
+      host.appendChild(fx);
+      const hole = fx.querySelector('[data-h]') as SVGCircleElement;
+      const wave = fx.querySelector('[data-w]') as SVGCircleElement;
+      const cards = Array.from(old.querySelectorAll<HTMLElement>('[data-launch="label"], [data-planet] span[class*="absolute"]'));
+      const core = old.querySelector<HTMLElement>('[data-launch="core"]');
+      box.style.opacity = '0';
+      let raf = 0;
+      let t0: number | null = null;
+      const DUR = 1.2;
+      const loop = (now: number) => {
+        if (t0 === null) t0 = now;
+        const t = Math.min((now - t0) / 1000, DUR);
+        const kk = eIn(seg(t, 0.1, 0.85));
+        const scale = 1 - kk;
+        old.style.opacity = scale > 0.01 ? '1' : '0';
+        old.style.transform = `rotate(${252 * kk}deg) scale(${scale})`;
+        cards.forEach((el) => { el.style.opacity = String(1 - seg(t, 0, 0.12)); });
+        if (core) Array.from(core.children).forEach((ch) => { (ch as HTMLElement).style.opacity = String(1 - seg(t, 0, 0.3)); });
+        hole.setAttribute('r', String(22 * k * eOut(seg(t, 0.6, 0.8)) * (1 - seg(t, 0.8, 0.9))));
+        const u = seg(t, 0.85, 1.1);
+        wave.setAttribute('r', String((8 + 200 * eOut(u)) * k));
+        wave.setAttribute('opacity', u > 0 && u < 1 ? String(0.7 * (1 - u)) : '0');
+        const re = seg(t, 0.95, 1.2);
+        box.style.opacity = String(re);
+        box.style.transform = `scale(${0.85 + 0.15 * eOut(re)})`;
+        if (t < DUR) {
+          raf = requestAnimationFrame(loop);
+        } else {
+          old.remove();
+          fx.remove();
+          box.style.opacity = '';
+          box.style.transform = '';
+        }
+      };
+      raf = requestAnimationFrame(loop);
+      void raf;
+      return true;
+    });
+    return () => registerCollapse(null);
+  }, [registerCollapse, R]);
 
   /* El «+» no depende de cuántos elementos hay: queda fijo abajo y centrado, sobre la última órbita */
   const ADD_SLOT: Slot = { orbit: 2, angle: 90, angleSm: 90 };
