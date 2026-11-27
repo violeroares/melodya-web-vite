@@ -17,7 +17,9 @@ export interface RenewalSubscription {
 export type RenewalState =
   | { kind: 'renews'; endsOn: string; canCancel: true }
   | { kind: 'canceled'; endsOn: string; canCancel: false }
-  | { kind: 'ended'; endsOn: string; canCancel: false };
+  | { kind: 'ended'; endsOn: string; canCancel: false }
+  /** El último cobro no se pudo hacer: el plan se mantiene unos días (gracia) mientras la pasarela reintenta. */
+  | { kind: 'past_due'; endsOn: string; canCancel: false };
 
 /** DD/MM/AAAA con ceros (formato pedido por producto, es-AR). */
 export function formatDateDMY(iso: string | null | undefined): string {
@@ -30,6 +32,7 @@ export function formatDateDMY(iso: string | null | undefined): string {
 /** Estado de renovación de una suscripción: renovable (se puede cancelar), con la renovación cancelada o ya terminada. */
 export function renewalState(sub: RenewalSubscription, nowMs: number = Date.now()): RenewalState {
   const endsOn = formatDateDMY(sub.currentPeriodEnd);
+  if (sub.status === 'PAST_DUE') return { kind: 'past_due', endsOn, canCancel: false };
   const over = sub.status !== 'ACTIVE' || new Date(sub.currentPeriodEnd).getTime() <= nowMs;
   if (over) return { kind: 'ended', endsOn, canCancel: false };
   if (sub.cancelAtPeriodEnd) return { kind: 'canceled', endsOn, canCancel: false };
@@ -40,7 +43,8 @@ export function renewalState(sub: RenewalSubscription, nowMs: number = Date.now(
 export const canceledNotice = (endsOn: string): string => `Renovación cancelada. Tu plan seguirá activo hasta el ${endsOn}`;
 
 /** Lo que explica el diálogo de confirmación antes de cancelar (todo con la fecha real del período). */
-export function cancelDialogCopy(planName: string, endsOn: string): { title: string; points: string[] } {
+export function cancelDialogCopy(planName: string, endsOn: string, provider?: string | null): { title: string; points: string[] } {
+  const irreversible = provider === 'mercadopago' ? [`Con Mercado Pago la cancelación no se puede deshacer: para volver a suscribirte vas a poder contratar de nuevo cuando termine el período, el ${endsOn}.`] : [];
   return {
     title: '¿Cancelar la renovación?',
     points: [
@@ -48,6 +52,7 @@ export function cancelDialogCopy(planName: string, endsOn: string): { title: str
       `Conservás todos los beneficios del plan hasta el ${endsOn}.`,
       'No se realiza un reembolso por el período vigente.',
       `Podés seguir usando Melodya con normalidad hasta el ${endsOn}; después pasás al plan Free. No se elimina ninguna de tus canciones ni tu contenido.`,
+      ...irreversible,
     ],
   };
 }
@@ -76,6 +81,7 @@ export function cancelErrorMessage(err: unknown, fallback: string): string {
   if (rejection === 'CHANGED') return 'Tu suscripción cambió mientras se procesaba la cancelación. Revisá su estado e intentá de nuevo.';
   const e = err as { status?: unknown } | null;
   if (e && typeof e === 'object' && e.status === 404) return 'No encontramos esa suscripción. Actualizamos tu estado.';
+  if (e && typeof e === 'object' && e.status === 502) return 'Mercado Pago no respondió, así que no se canceló nada: tu renovación sigue como estaba. Probá de nuevo en unos minutos.';
   return fallback;
 }
 
@@ -102,7 +108,7 @@ export function planPriceParts(plan: PlanPriceFields | null | undefined): { cent
 export interface PlanLike { id: string; isDefault?: boolean; priceCents?: number | null }
 export interface PlanRoleContext {
   effectivePlan?: { id: string; isDefault: boolean } | null;
-  subscription?: { status: string; plan: { id: string; priceCents?: number | null }; pendingPlan?: { id: string } | null } | null;
+  subscription?: { status: string; plan: { id: string; priceCents?: number | null }; pendingPlan?: { id: string } | null; provider?: string | null } | null;
 }
 
 /** Qué es cada plan del catálogo para ESTE usuario. */
@@ -113,7 +119,8 @@ export type PlanRole =
   | 'scheduled' // destino de un cambio programado (todavía no rige)
   | 'subscribe' // sin suscripción paga: se puede contratar
   | 'upgrade' // con suscripción paga de menor precio
-  | 'downgrade'; // con suscripción paga de mayor precio
+  | 'downgrade' // con suscripción paga de mayor precio
+  | 'locked'; // hoy no se puede cambiar a este plan (el backend no habilita los cambios de plan con Mercado Pago)
 
 export function planRole(plan: PlanLike, ctx: PlanRoleContext): PlanRole {
   if (plan.isDefault) return ctx.effectivePlan?.isDefault ? 'base-current' : 'base';
@@ -225,7 +232,7 @@ export function scheduledChangeView(change: ScheduledChangeLike | null | undefin
   return { current, future, date, what: `Ese día tu suscripción pasa a ${target} y se acreditan las fichas de ese plan. Hasta entonces conservás ${currentName}.` };
 }
 
-/** Aviso tras POST /billing/mock-checkout cuando el servidor programó un cambio (nunca se anuncia como ya aplicado). */
+/** Aviso cuando el servidor programó un cambio de plan (nunca se anuncia como ya aplicado). Los cambios con Mercado Pago se confirman en Store; Web ya no compra. */
 export function changeScheduledNotice(change: { kind: 'UPGRADE' | 'DOWNGRADE'; effectiveAt: string; toPlan: { name: string }; fromPlan: { name: string }; alreadyScheduled?: boolean }): { title: string; description: string } {
   const date = formatDateDMY(change.effectiveAt);
   return {
@@ -272,4 +279,15 @@ export function planCapabilityLines(entitlements: Record<string, PlanEntitlement
   ];
   for (const [key, label] of BOOLEAN_LINES) lines.push({ key, label, included: Boolean(get(key)?.enabled), detail: null });
   return lines;
+}
+
+/** Texto cuando el backend no habilita los cambios de plan con Mercado Pago. */
+export const PLAN_CHANGES_UNAVAILABLE_NOTE = 'El cambio de plan con Mercado Pago estará disponible muy pronto.';
+
+/**
+ * Aplica la capacidad informada por el backend (GET /checkout/status → `planChanges.enabled`): con una suscripción de Mercado Pago, mejorar o bajar de plan se bloquea mientras no sea `true`
+ * (sin dato = deshabilitado). Deshacer un cambio programado, el plan vigente y las altas no se tocan. El servidor además lo rechaza (409 PLAN_CHANGES_DISABLED): esto solo es lo que se muestra.
+ */
+export function withPlanChangeCapability(role: PlanRole, ctx: { provider?: string | null; planChangesEnabled?: boolean | null }): PlanRole {
+  return (role === 'upgrade' || role === 'downgrade') && ctx.provider === 'mercadopago' && ctx.planChangesEnabled !== true ? 'locked' : role;
 }

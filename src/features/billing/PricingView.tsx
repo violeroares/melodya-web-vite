@@ -1,23 +1,19 @@
-'use client';
-
 /**
- * MELODYA WEB — Planes y fichas (ruta #/plans, pública).
+ * MELODYA WEB — Planes y fichas (ruta /plans, pública).
  * Contrato real (audit §2.5, §2.6 y §7):
  *  • GET /plans → { items: SubscriptionPlan[] } y GET /plans/credit-packages → { items: CreditPackage[] } (públicos).
  *    v0.18: cada plan/pack incluye previousPriceCents (tachado si existe), features
  *    (ítems check ✓/✗ administrados desde el backoffice) y purchaseCount (compras
  *    reales → badges «El favorito» / «Más popular», nada hardcodeado).
- *  • POST /billing/mock-checkout { type:'PLAN', planId } | { type:'PACKAGE', packageId } 🔒
- *    → acredita las fichas al instante (checkout simulado del backend; en producción
- *      acá se integra la pasarela de pagos real desde el backend — BACKEND GAP, audit §15).
+ *  • Las COMPRAS (alta de plan, mejora, baja y paquetes) se hacen en Melodya Store con Mercado Pago (POST /billing/checkout, solo desde Store): acá NO se llama al checkout
+ *    simulado. Web muestra el estado y abre Store con la sesión actual; «Deshacer el cambio» (POST /billing/subscriptions/:id/resume) y «Cancelar renovación» siguen acá.
  *  • GET /credits → { balance } · GET /credits/transactions ?page&pageSize&type 🔒
  *    (la API filtra por un solo type → el filtro "Compras" combina PACKAGE_PURCHASE
  *     + PLAN_GRANT con dos fetch paralelos).
  *  • Plan efectivo: GET /users/me → user.effectivePlan { code, name, isDefault, source: 'BASE' | 'SUBSCRIPTION' }. Free es el plan BASE (no es una
  *    suscripción). Suscripción paga: user.subscription { plan, currentPeriodEnd, pendingPlan, scheduledChange } | null.
- *  • Con una suscripción paga: un plan SUPERIOR (Creator → Pro) es un UPGRADE INMEDIATO: GET /billing/upgrade-quote da la cotización (prorrateo del servidor),
- *    la confirmación envía su `finalPriceCents` como `expectedFinalPriceCents` y la respuesta trae la suscripción ya con el plan nuevo (sin `change`). Un plan
- *    INFERIOR (Pro → Creator) PROGRAMA el cambio para el próximo período: el servidor responde `change` y el plan actual rige hasta esa fecha.
+ *  • Con una suscripción paga de Mercado Pago: un plan SUPERIOR (Creator → Pro) cobra la diferencia prorrateada y activa Pro al verificar el pago; un plan INFERIOR (Pro → Creator)
+ *    queda PROGRAMADO para el próximo período. Ambos se confirman en Store (con su cotización); acá se ve el plan vigente y el cambio pendiente (`scheduledChange`).
  * Precios y fichas SIEMPRE desde el backend (nada hardcodeado).
  */
 import React, { useEffect, useMemo, useState } from 'react';
@@ -33,7 +29,7 @@ import { useToast } from '@/hooks/use-toast';
 import { useRefreshCommercialState } from '@/hooks/use-commercial-state';
 import type { CreditPackage, SubscriptionPlan } from '@/types';
 import {
-  changeDialogCopy, changeScheduledNotice, formatDateDMY, planCtaLabel, planRole, resumeNotice, upgradeAppliedNotice, upgradeConfirmLabel, upgradeDialogCopy, upgradeQuoteErrorMessage,
+  PLAN_CHANGES_UNAVAILABLE_NOTE, formatDateDMY, planCtaLabel, planRole, resumeNotice, withPlanChangeCapability,
   type PlanRole,
 } from '@/lib/subscription';
 import { cn } from '@/lib/utils';
@@ -43,17 +39,10 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { SubscriptionCard } from './SubscriptionCard';
+import { OpenStoreButton } from './OpenStoreButton';
+import { usePageRestore } from '@/hooks/use-page-restore';
+import { openStore, packBuyMode, type StoreProduct } from '@/lib/store-link';
 import { CurrentPlanCard } from './CurrentPlanCard';
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from '@/components/ui/alert-dialog';
 import { msUntilNextPromotionEnd, priceChanged, priceView, promotionEndsText, serverNowMs } from '@/lib/pricing';
 
 /** Entero con separador es-AR (1000 → 1.000). */
@@ -65,12 +54,6 @@ export function mostPurchasedId<T extends { id: string; purchaseCount?: number |
   const best = items.reduce<T | null>((max, p) => ((p.purchaseCount ?? 0) > (max?.purchaseCount ?? 0) ? p : max), null);
   return best && (best.purchaseCount ?? 0) > 0 ? best.id : null;
 }
-
-/** Compra en curso (pack o plan) — el mock-checkout acredita al instante. */
-/** `expectedFinalCents`: el importe que el usuario ve en la tarjeta; el servidor lo usa solo para detectar un precio desfasado (409). */
-type Purchase =
-  | { kind: 'PACKAGE'; id: string; name: string; credits: number; expectedFinalCents: number }
-  | { kind: 'PLAN'; id: string; name: string; credits: number; expectedFinalCents: number; upgrade?: boolean };
 
 export function PricingView() {
   const qc = useQueryClient();
@@ -102,22 +85,11 @@ export function PricingView() {
   const popularPlanId = useMemo(() => mostPurchasedId(plans), [plans]);
 
   const subscription = user?.subscription ?? null;
+  // Capacidad de cambiar de plan con Mercado Pago: la decide el backend (sin dato = deshabilitada).
+  const checkoutStatusQuery = useQuery({ queryKey: ['checkout-status'], queryFn: () => billingApi.checkoutStatus(), staleTime: 60_000 });
+  const planChangesEnabled = checkoutStatusQuery.data?.planChanges?.enabled === true;
   const effectivePlan = user?.effectivePlan ?? null;
   const roleCtx = { effectivePlan, subscription };
-  /** Cambio de plan pendiente de confirmación (upgrade o downgrade). */
-  const [changeTarget, setChangeTarget] = useState<{ plan: SubscriptionPlan; kind: 'UPGRADE' | 'DOWNGRADE' } | null>(null);
-  /** Cotización del upgrade inmediato: la calcula el servidor al abrir la confirmación; la compra la recalcula y la valida con `expectedFinalPriceCents`. */
-  const upgradePlan = changeTarget?.kind === 'UPGRADE' ? changeTarget.plan : null;
-  const upgradeQuoteQuery = useQuery({
-    queryKey: ['upgrade-quote', upgradePlan?.id ?? null],
-    queryFn: () => billingApi.upgradeQuote(upgradePlan!.id),
-    enabled: Boolean(upgradePlan),
-    staleTime: 0,
-    gcTime: 0,
-    retry: false,
-    refetchOnWindowFocus: false,
-  });
-
   // Cuando vence la primera promoción que se muestra (según el reloj del servidor) se vuelve a pedir el catálogo: no queda una oferta terminada en pantalla.
   const serverTime = plansQuery.data?.serverTime ?? packsQuery.data?.serverTime;
   const pricedAt = plansQuery.data?.serverTime ? plansQuery.dataUpdatedAt : packsQuery.dataUpdatedAt;
@@ -130,51 +102,6 @@ export function PricingView() {
     }, Math.min(ms + 1500, 2_000_000_000));
     return () => clearTimeout(timer);
   }, [plans, packs, serverTime, pricedAt, qc]);
-
-  const checkout = useMutation({
-    mutationFn: (p: Purchase) =>
-      billingApi.mockCheckout({
-        ...(p.kind === 'PACKAGE' ? { type: 'PACKAGE' as const, packageId: p.id } : { type: 'PLAN' as const, planId: p.id }),
-        expectedFinalPriceCents: p.expectedFinalCents,
-      }),
-    onSuccess: (res, p) => {
-      void refreshCommercial(); // compra, upgrade inmediato o cambio programado: el estado visible es el del servidor
-      if (p.kind === 'PLAN' && p.upgrade) {
-        // Upgrade inmediato: el plan nuevo ya está activo (la respuesta no trae `change`).
-        toast(upgradeAppliedNotice(res?.subscription, p.credits, p.name));
-        setChangeTarget(null);
-        return;
-      }
-      if (res?.change) {
-        // Con una suscripción vigente el servidor PROGRAMA el cambio: no hay compra ni fichas ahora y el plan nuevo no rige todavía.
-        toast(changeScheduledNotice(res.change));
-        setChangeTarget(null);
-        return;
-      }
-      if (p.kind === 'PACKAGE') {
-        toast({ title: '¡Compra realizada!', description: `Sumaste ${fmtInt(p.credits)} fichas ⚡` });
-      } else {
-        toast({ title: '¡Suscripción activa!', description: `Sumaste ${fmtInt(p.credits)} fichas de tu plan ${p.name} ⚡` });
-      }
-    },
-    onError: (err, p) => {
-      // Upgrade inmediato: si el importe cambió entre la cotización y la confirmación NO se cobra; se conserva el diálogo, se vuelve a cotizar y se pide una nueva confirmación.
-      if (p.kind === 'PLAN' && p.upgrade && priceChanged(err)) {
-        void upgradeQuoteQuery.refetch();
-        toast({ title: 'El importe cambió', description: 'Revisá la nueva cotización y confirmá de nuevo.', variant: 'destructive' });
-        return;
-      }
-      setChangeTarget(null);
-      // El precio cambió (terminó la promoción o se agotó el cupo): se actualiza el catálogo para que el usuario vea el importe nuevo.
-      if (priceChanged(err)) {
-        void qc.invalidateQueries({ queryKey: ['plans'] });
-        void qc.invalidateQueries({ queryKey: ['credit-packages'] });
-        toast({ title: 'El precio cambió', description: toUserMessage(err), variant: 'destructive' });
-        return;
-      }
-      toast({ title: 'No pudimos completar la compra', description: toUserMessage(err), variant: 'destructive' });
-    },
-  });
 
   /** Deshace el cambio de plan programado (o la cancelación) de la suscripción vigente. */
   const resume = useMutation({
@@ -189,15 +116,40 @@ export function PricingView() {
     },
   });
 
-  const startCheckout = (p: Purchase) => {
-    if (!user) {
+  /** Producto (pack o plan) que se está abriendo en Store (mientras se pide el código de acceso). */
+  const [openingStoreFor, setOpeningStoreFor] = useState<string | null>(null);
+  /* Volver de Store con «atrás» restaura esta página desde el bfcache con el botón todavía en «abriendo»: se libera para poder elegir de nuevo (packs, Creator y Pro). */
+  usePageRestore(() => setOpeningStoreFor(null));
+  /**
+   * Los PAQUETES y los PLANES (alta, mejora, baja) se pagan y gestionan en Melodya Store con Mercado Pago (el mismo checkout real, sin duplicarlo acá). Acá nunca se llama al checkout
+   * simulado: si Store no está configurada se avisa y no se compra nada.
+   */
+  const openStoreFor = async (product: StoreProduct, next: '/store#fichas' | '/store#planes') => {
+    const productId = product.id;
+    const mode = packBuyMode({ loggedIn: !!user });
+    if (mode === 'login') {
       toast({ title: 'Ingresá para comprar', description: 'Creá tu cuenta gratis y volvé para sumar fichas.' });
       navigate('/login');
       return;
     }
-    checkout.mutate(p);
+    if (mode === 'store-not-configured') {
+      toast({
+        title: 'La tienda no está configurada',
+        description: 'Las compras se hacen en Melodya Store y todavía no está disponible en este entorno (falta VITE_STORE_URL). No se realizó ninguna compra.',
+        variant: 'destructive',
+      });
+      return;
+    }
+    setOpeningStoreFor(productId);
+    try {
+      await openStore(next, product);
+    } catch (err) {
+      setOpeningStoreFor(null);
+      toast({ title: 'No pudimos abrir la tienda', description: toUserMessage(err), variant: 'destructive' });
+    }
   };
-  const busyPurchaseId = checkout.isPending ? checkout.variables?.id ?? null : null;
+  const buyPack = (pack: CreditPackage) => openStoreFor({ kind: 'pack', id: pack.id }, '/store#fichas');
+  const buyPlan = (plan: SubscriptionPlan) => openStoreFor({ kind: 'plan', id: plan.id }, '/store#planes');
 
   return (
     <div className="view-in">
@@ -207,6 +159,14 @@ export function PricingView() {
         <p className="mt-2 max-w-xl text-sm leading-relaxed text-muted-foreground sm:text-base">
           Elegí cómo querés abastecer tu creatividad.
         </p>
+
+        {/* Entrada a Melodya Store con la sesión actual (código de un solo uso). En el encabezado para que se vea sin desplazarse: el saldo de abajo ocupa mucho alto. */}
+        {isLoggedIn && (
+          <div className="mt-5 flex flex-wrap items-center gap-3">
+            <OpenStoreButton />
+            <span className="text-sm text-muted-foreground">Pagá con Mercado Pago en la Tienda de Melodya.</span>
+          </div>
+        )}
 
         {isLoggedIn && (
           <div className="mt-6 flex items-center gap-4 sm:gap-7">
@@ -244,6 +204,7 @@ export function PricingView() {
           title="Comprar un paquete de fichas"
           subtitle="Pago único: las fichas se acreditan al instante en tu cuenta."
         />
+        {isLoggedIn && <div className="mb-4"><OpenStoreButton /></div>}
         {packsQuery.isLoading ? (
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-3" aria-busy="true" aria-label="Cargando paquetes de fichas">
             {Array.from({ length: 3 }).map((_, i) => (
@@ -265,16 +226,8 @@ export function PricingView() {
                 key={pack.id}
                 pack={pack}
                 popular={pack.id === favoritePackId}
-                busy={busyPurchaseId === pack.id}
-                onBuy={() =>
-                  startCheckout({
-                    kind: 'PACKAGE',
-                    id: pack.id,
-                    name: pack.name,
-                    credits: pack.credits + pack.bonusCredits,
-                    expectedFinalCents: priceView(pack).finalCents,
-                  })
-                }
+                busy={openingStoreFor === pack.id}
+                onBuy={() => void buyPack(pack)}
               />
             ))}
           </div>
@@ -304,7 +257,7 @@ export function PricingView() {
         ) : (
           <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,280px),1fr))] gap-4">
             {plans.map((plan) => {
-              const role = planRole(plan, roleCtx);
+              const role = withPlanChangeCapability(planRole(plan, roleCtx), { provider: subscription?.provider, planChangesEnabled });
               const mine = subscription?.plan?.id === plan.id;
               return (
                 <PlanCard
@@ -315,17 +268,13 @@ export function PricingView() {
                   renewalCanceled={mine && Boolean(subscription?.cancelAtPeriodEnd)}
                   renewsOn={mine && subscription?.currentPeriodEnd ? formatDateDMY(subscription.currentPeriodEnd) : null}
                   scheduledOn={role === 'scheduled' && subscription?.scheduledChange ? formatDateDMY(subscription.scheduledChange.effectiveAt) : null}
-                  busy={busyPurchaseId === plan.id || (role === 'scheduled' && resume.isPending)}
+                  busy={openingStoreFor === plan.id || (role === 'scheduled' && resume.isPending)}
                   onSubscribe={() => {
-                    if (role === 'upgrade' || role === 'downgrade') {
-                      setChangeTarget({ plan, kind: role === 'upgrade' ? 'UPGRADE' : 'DOWNGRADE' });
-                      return;
-                    }
                     if (role === 'scheduled') {
-                      resume.mutate();
+                      resume.mutate(); // deshacer un cambio programado: mismo endpoint que Store
                       return;
                     }
-                    startCheckout({ kind: 'PLAN', id: plan.id, name: plan.name, credits: plan.monthlyCredits, expectedFinalCents: priceView(plan).finalCents });
+                    void buyPlan(plan); // alta, mejora o baja: se hacen en Store con Mercado Pago
                   }}
                 />
               );
@@ -334,78 +283,10 @@ export function PricingView() {
         )}
       </section>
 
-      <AlertDialog open={changeTarget !== null} onOpenChange={(o) => !checkout.isPending && !o && setChangeTarget(null)}>
-        <AlertDialogContent className="max-w-md border-border/70 bg-surface">
-          {changeTarget && subscription && (() => {
-            const isUpgrade = changeTarget.kind === 'UPGRADE';
-            const quote = upgradeQuoteQuery.data ?? null;
-            const copy = isUpgrade
-              ? (quote ? upgradeDialogCopy(quote, formatPriceCents) : { title: `¿Comprar ${changeTarget.plan.name} ahora?`, rows: [], points: [] as string[] })
-              : { ...changeDialogCopy('DOWNGRADE', subscription.plan.name, changeTarget.plan.name, formatDateDMY(subscription.currentPeriodEnd)), rows: [] as Array<{ label: string; value: string; strong?: boolean }> };
-            const ready = !isUpgrade || (quote !== null && !upgradeQuoteQuery.isFetching);
-            return (
-              <>
-                <AlertDialogHeader>
-                  <AlertDialogTitle className="font-display">{copy.title}</AlertDialogTitle>
-                  <AlertDialogDescription asChild>
-                    <div className="space-y-3 text-left text-sm text-muted-foreground">
-                      {isUpgrade && !quote && upgradeQuoteQuery.isError && <p role="alert" className="text-destructive">{upgradeQuoteErrorMessage(upgradeQuoteQuery.error)}</p>}
-                      {isUpgrade && !quote && !upgradeQuoteQuery.isError && (
-                        <div role="status" className="space-y-2">
-                          <Skeleton className="h-4 w-3/4" />
-                          <Skeleton className="h-4 w-2/3" />
-                          <span className="sr-only">Calculando tu importe…</span>
-                        </div>
-                      )}
-                      {copy.rows.length > 0 && (
-                        <dl className="space-y-1.5 rounded-md border border-border/60 p-3">
-                          {copy.rows.map((r) => (
-                            <div key={r.label} className={cn('flex items-baseline justify-between gap-3', r.strong && 'border-t border-border/60 pt-1.5 font-semibold text-foreground')}>
-                              <dt>{r.label}</dt>
-                              <dd>{r.value}</dd>
-                            </div>
-                          ))}
-                        </dl>
-                      )}
-                      {copy.points.length > 0 && (
-                        <ul className="list-disc space-y-1.5 pl-5">
-                          {copy.points.map((pt) => (
-                            <li key={pt}>{pt}</li>
-                          ))}
-                        </ul>
-                      )}
-                    </div>
-                  </AlertDialogDescription>
-                </AlertDialogHeader>
-                <AlertDialogFooter>
-                  <AlertDialogCancel disabled={checkout.isPending}>Seguir con {subscription.plan.name}</AlertDialogCancel>
-                  <AlertDialogAction
-                    disabled={checkout.isPending || !ready}
-                    onClick={(e) => {
-                      e.preventDefault();
-                      if (checkout.isPending || !ready) return;
-                      const target = changeTarget.plan;
-                      // Upgrade: el importe cotizado por el servidor. Downgrade (programado): el del catálogo, como siempre.
-                      checkout.mutate({
-                        kind: 'PLAN', id: target.id, name: target.name, credits: target.monthlyCredits, upgrade: isUpgrade,
-                        expectedFinalCents: isUpgrade && quote ? quote.finalPriceCents : priceView(target).finalCents,
-                      });
-                    }}
-                  >
-                    {checkout.isPending && <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" aria-hidden />}
-                    {isUpgrade ? upgradeConfirmLabel(changeTarget.plan.name) : 'Programar el cambio'}
-                  </AlertDialogAction>
-                </AlertDialogFooter>
-              </>
-            );
-          })()}
-        </AlertDialogContent>
-      </AlertDialog>
-
-      {/* Nota honesta: checkout simulado (BACKEND GAP documentado en el audit) */}
+      {/* Dónde se paga */}
       <p className="mt-6 flex max-w-2xl items-start gap-2 text-xs leading-relaxed text-muted-foreground">
         <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden />
-        Checkout en modo demostración: la pasarela de pagos real se integra desde el backend.
+        Los planes y los paquetes de fichas se contratan y se pagan en la Tienda de Melodya con Mercado Pago; desde ahí también podés mejorar, bajar o cancelar tu plan.
       </p>
 
       {/* El historial de fichas vive en Perfil → Mi actividad */}
@@ -635,6 +516,8 @@ export function PlanCard({
               </PricingCta>
               {renewsOn && <p className={cn('mt-2 text-center text-xs', soft)}>{renewalCanceled ? 'Vence' : 'Renueva'}: {renewsOn}</p>}
             </>
+          ) : role === 'locked' ? (
+            <p className={cn('text-center text-sm', soft)} data-testid="plan-change-unavailable">{PLAN_CHANGES_UNAVAILABLE_NOTE}</p>
           ) : role === 'scheduled' ? (
             <>
               <p className={cn('mb-2 text-center text-sm font-semibold', strong)} data-testid="scheduled-plan-note">Programado: rige desde el {scheduledOn}</p>

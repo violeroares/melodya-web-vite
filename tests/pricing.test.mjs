@@ -68,12 +68,10 @@ const pricingView = read('../src/features/billing/PricingView.tsx');
 const bannersSrc = read('../src/components/banners/index.tsx');
 const apiSrc = read('../src/lib/api/index.ts');
 
-test('el checkout envía el importe visto SOLO como expectedFinalPriceCents (para detectar desfasajes), y ante PRICE_CHANGED vuelve a pedir el catálogo', () => {
-  assert.match(pricingView, /expectedFinalPriceCents: p\.expectedFinalCents/);
-  assert.match(pricingView, /expectedFinalCents: priceView\((pack|plan)\)\.finalCents/g);
-  assert.match(pricingView, /if \(priceChanged\(err\)\)/);
+test('Web ya no compra: no envía importes (la compra real vive en Store); el catálogo se sigue refrescando al vencer una promoción', () => {
+  assert.doesNotMatch(pricingView, /expectedFinalPriceCents|billingApi\.mockCheckout/);
   assert.match(pricingView, /invalidateQueries\(\{ queryKey: \['plans'\] \}\)/);
-  assert.match(apiSrc, /expectedFinalPriceCents\?: number/);
+  assert.doesNotMatch(apiSrc, /expectedFinalPriceCents|mockCheckout/, 'el cliente de API ya no tiene el checkout simulado ni envia importes');
 });
 
 test('las tarjetas toman precio, tachado y ahorro de priceView (servidor) y no recalculan el porcentaje de una promoción', () => {

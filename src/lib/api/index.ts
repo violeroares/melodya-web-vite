@@ -7,7 +7,7 @@ import type {
   CommunitySongDetail, SongComment, UserLyric, LyricPersona, UserSample, VoiceSession, VoiceAvailability, Project,
   CreditTransaction, SubscriptionPlan, CreditPackage, Banner, Announcement, WavState, RemixMode, RemixTemplate, GenerationRecovery, RetryBody,
   SuggestionsResult, PublicUserProfile, CommunityUserCard, AppNotification, NotificationType,
-  Report, ReportReason, ReportTargetType, UsageSummary, ActiveSubscription, CheckoutResult, UpgradeQuote,
+  Report, ReportReason, ReportTargetType, UsageSummary, ActiveSubscription, UpgradeQuote,
 } from '@/types';
 
 /* ── Auth ── */
@@ -70,9 +70,8 @@ export const billingApi = {
   /** `serverTime`: la hora del servidor, para que el vencimiento de una promoción no dependa del reloj del navegador. */
   plans: () => getData<{ items: SubscriptionPlan[]; serverTime?: string }>('/plans'),
   packages: () => getData<{ items: CreditPackage[]; serverTime?: string }>('/plans/credit-packages'),
-  /** `expectedFinalPriceCents`: el importe que el usuario vio, solo para detectar desfasajes (409 PRICE_CHANGED). El servidor nunca lo usa como importe. */
-  mockCheckout: (body: ({ type: 'PLAN'; planId: string } | { type: 'PACKAGE'; packageId: string }) & { expectedFinalPriceCents?: number }) =>
-    postData<CheckoutResult>('/billing/mock-checkout', body),
+  /** Estado público del checkout. `planChanges.enabled`: capacidad de cambiar de plan (mejora/baja) con Mercado Pago, decidida por el backend (sin dato = deshabilitada). */
+  checkoutStatus: () => getData<{ enabled: boolean; message: string | null; planChanges?: { enabled: boolean } }>('/checkout/status'),
   /** Cotización del upgrade inmediato al plan `planId` (solo lectura; 409 UPGRADE_NOT_AVAILABLE con `details.reason` si no corresponde). La compra la recalcula y valida. */
   upgradeQuote: (planId: string) => getData<UpgradeQuote>('/billing/upgrade-quote', { planId }),
   /** Deshace la cancelación pedida o el cambio de plan programado de la propia suscripción (antes de que se aplique). Idempotente: `alreadyActive`. */

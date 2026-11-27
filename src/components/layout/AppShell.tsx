@@ -15,6 +15,7 @@ import { CommandPalette } from '@/components/common/CommandPalette';
 import { UpgradeDialog } from '@/components/common/PlanGate';
 import { useRealtime, type NotificationCreatedPayload } from '@/hooks';
 import { useToast } from '@/hooks/use-toast';
+import { useRefreshOnPageRestore } from '@/hooks/use-page-restore';
 import { Heart } from 'lucide-react';
 import { useRoute } from '@/lib/router';
 import { cn } from '@/lib/utils';
@@ -72,6 +73,9 @@ export function AppShell({ children, withFooter = true }: { children: React.Reac
       return !c;
     });
   };
+
+  // Al volver del bfcache (p. ej. desde Melodya Store) se releen notificaciones y estado comercial
+  useRefreshOnPageRestore();
 
   // Socket.IO realtime (eventos reales del backend) + toasts de generación
   useRealtime((ev) => {
