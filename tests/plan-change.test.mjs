@@ -110,15 +110,13 @@ test('mensajes de la cotización: pago pendiente, renovación en curso, otros mo
   assert.match(upgradeQuoteErrorMessage(new Error('red')), /No pudimos cotizar/);
 });
 
-test('PricingView: el upgrade usa la cotización del servidor como importe esperado y ante PRICE_CHANGED vuelve a cotizar sin cobrar; el downgrade sigue programado', () => {
+test('PricingView: alta, mejora y baja de plan se hacen en Store con Mercado Pago (cotización y confirmación allá); Web nunca usa el checkout simulado; deshacer un cambio sigue acá', () => {
   const view = read('../src/features/billing/PricingView.tsx');
-  assert.match(view, /billingApi\.upgradeQuote\(upgradePlan!\.id\)/);
-  assert.match(view, /expectedFinalCents: isUpgrade && quote \? quote\.finalPriceCents : priceView\(target\)\.finalCents/);
-  assert.match(view, /p\.kind === 'PLAN' && p\.upgrade && priceChanged\(err\)/);
-  assert.match(view, /upgradeQuoteQuery\.refetch\(\)/);
-  assert.match(view, /upgradeConfirmLabel\(changeTarget\.plan\.name\) : 'Programar el cambio'/);
-  assert.match(view, /changeDialogCopy\('DOWNGRADE'/);
-  assert.match(view, /p\.kind === 'PLAN' && p\.upgrade\) \{[\s\S]*upgradeAppliedNotice/);
+  assert.doesNotMatch(view, /mockCheckout|mock-checkout\(|billingApi\.upgradeQuote|AlertDialog/, 'el checkout simulado y el diálogo de cambio local ya no existen');
+  assert.match(view, /openStore\(next, product\)/);
+  assert.match(view, /openStoreFor\(\{ kind: 'plan', id: plan\.id \}, '\/store#planes'\)/);
+  assert.match(view, /if \(role === 'scheduled'\) \{\s*resume\.mutate\(\)/);
+  assert.match(view, /void buyPlan\(plan\)/);
 });
 
 test('cambio programado visible: plan vigente, cambio futuro, fecha y qué pasará ese día', () => {
@@ -174,17 +172,45 @@ test('la web no calcula ni inventa nada: usa el plan efectivo y el cambio progra
   const pricing = read('../src/features/billing/PricingView.tsx');
   assert.match(pricing, /user\?\.effectivePlan/);
   assert.match(pricing, /billingApi\.resumeSubscription/);
-  assert.match(pricing, /res\?\.change/);
+  assert.doesNotMatch(pricing, /billingApi\.mockCheckout/);
   const card = read('../src/features/billing/SubscriptionCard.tsx');
   assert.match(card, /scheduledChangeView\(subscription\.scheduledChange/);
   assert.match(card, /Reactivar renovación/);
   const api = read('../src/lib/api/index.ts');
   assert.match(api, /\/billing\/subscriptions\/\$\{encodeURIComponent\(subscriptionId\)\}\/resume/);
-  assert.match(api, /\/billing\/mock-checkout/);
+  assert.doesNotMatch(api, /mock-checkout|mockCheckout/, 'Web ya no tiene cliente del checkout simulado');
   assert.doesNotMatch(api, /\/store|checkout\/session/i, 'no se inventa un contrato con el Store');
 });
 
 test('LYRICS_AI solo bloquea el asistente de letras, no la creación de canciones a partir de una idea', () => {
   const model = read('../src/features/creator/song-model.ts');
   assert.doesNotMatch(model, /locks\.lyricsAi/);
+});
+
+test('capacidad del backend: sin planChanges.enabled=true, mejorar/bajar con Mercado Pago se bloquea; el resto no cambia; Web lo toma de GET /checkout/status', () => {
+  const { withPlanChangeCapability, planCtaLabel } = S;
+  for (const role of ['upgrade', 'downgrade']) {
+    assert.equal(withPlanChangeCapability(role, { provider: 'mercadopago', planChangesEnabled: false }), 'locked');
+    assert.equal(withPlanChangeCapability(role, { provider: 'mercadopago' }), 'locked', 'sin dato = deshabilitado');
+    assert.equal(withPlanChangeCapability(role, { provider: 'mercadopago', planChangesEnabled: true }), role);
+    assert.equal(withPlanChangeCapability(role, { provider: 'mock', planChangesEnabled: false }), role, 'el mock no se toca');
+  }
+  for (const role of ['scheduled', 'current', 'subscribe', 'base', 'base-current']) assert.equal(withPlanChangeCapability(role, { provider: 'mercadopago', planChangesEnabled: false }), role);
+  assert.equal(planCtaLabel('locked', 'Pro'), null);
+  const view = read('../src/features/billing/PricingView.tsx');
+  assert.match(view, /billingApi\.checkoutStatus\(\)/);
+  assert.match(view, /withPlanChangeCapability\(planRole\(plan, roleCtx\)/);
+  assert.match(read('../src/lib/api/index.ts'), /'\/checkout\/status'/);
+});
+
+test('ninguna parte de Web compra por el checkout simulado: ni el endpoint ni su cliente ni sus tipos existen en src/', () => {
+  const walk = (dir) => fs.readdirSync(dir, { withFileTypes: true }).flatMap((e) => (e.isDirectory() ? walk(new URL(e.name + '/', dir)) : [new URL(e.name, dir)]));
+  const files = walk(new URL('../src/', import.meta.url)).filter((u) => /\.(ts|tsx)$/.test(u.pathname));
+  assert.ok(files.length > 100, 'se recorrió el código fuente');
+  const offenders = files.filter((u) => /mock-checkout|mockCheckout|CheckoutResult|PlanChangeResult/.test(fs.readFileSync(u, 'utf8'))).map((u) => u.pathname.split('/src/')[1]);
+  assert.deepEqual(offenders, [], 'compras y cambios de plan se hacen en Store (POST /billing/checkout); nada de Web usa /billing/mock-checkout');
+  // Y los botones de compra de planes y paquetes solo abren Store.
+  const view = fs.readFileSync(new URL('../src/features/billing/PricingView.tsx', import.meta.url), 'utf8');
+  assert.match(view, /openStoreFor\(\{ kind: 'plan', id: plan\.id \}, '\/store#planes'\)/);
+  assert.match(view, /openStoreFor\(\{ kind: 'pack', id: pack\.id \}, '\/store#fichas'\)/);
 });

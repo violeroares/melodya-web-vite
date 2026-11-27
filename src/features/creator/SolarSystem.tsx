@@ -1,4 +1,3 @@
-
 /**
  * Presentación del sistema solar: el centro es la canción y cada elemento es un planeta (un botón).
  *
@@ -11,7 +10,7 @@
 
 import React from 'react';
 import { createPortal } from 'react-dom';
-import { PenLine, Palette, Mic, AudioLines, SlidersHorizontal, Sparkles, Plus, Check, CircleAlert } from 'lucide-react';
+import { PenLine, Palette, Mic, AudioLines, SlidersHorizontal, Sparkles, Plus, Minus, Check, CircleAlert, TriangleAlert } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { type PlanetId, type SongState, type Issue, type Capabilities, activePlanets, planetDef, summarize, songStatus, hasStyleInputs } from './song-model';
 import { VinylDisc } from './VinylDisc';
@@ -552,6 +551,16 @@ export function SolarSystem({ song, caps, issues, onOpenPlanet, onOpenCatalog, r
                     <Icon className="relative h-[clamp(1.25rem,5.3cqw,1.75rem)] w-[clamp(1.25rem,5.3cqw,1.75rem)]" aria-hidden />
                     {/* Con un problema: aro punteado alrededor (design-V2 · `.planet.alert`) */}
                     {!isPending && (st === 'error' || st === 'warning') && <span aria-hidden className="pointer-events-none absolute -inset-[clamp(5px,1.4cqw,8px)] rounded-full border-2 border-dashed border-label dark:border-gold" />}
+                    {/* Indicador de estado arriba a la derecha (el mismo de antes del rediseño): falta algo, revisar, opcional o listo. Va después del icono del planeta. */}
+                    <span
+                      className={cn(
+                        'absolute -right-1 -top-1 flex h-4 w-4 items-center justify-center rounded-full border-2 border-background sm:h-5 sm:w-5',
+                        st === 'error' ? 'bg-destructive text-background' : st === 'warning' ? 'bg-gold text-on-gold' : st === 'optional' ? 'bg-surface-2 text-muted-foreground' : 'bg-success text-background'
+                      )}
+                      aria-hidden
+                    >
+                      {st === 'error' ? <CircleAlert className="h-3 w-3" /> : st === 'warning' ? <TriangleAlert className="h-3 w-3" /> : st === 'optional' ? <Minus className="h-3 w-3" /> : <Check className="h-3 w-3" strokeWidth={3} />}
+                    </span>
                   </span>
                   <PlanetLabel label={def.label} detail={isPending ? 'Falta completar' : summary[id]} pending={isPending} />
                 </button>

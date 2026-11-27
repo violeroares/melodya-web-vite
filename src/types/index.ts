@@ -89,22 +89,14 @@ export interface ActiveSubscription {
   pendingPlan?: { id: string; code: string; name: string } | null;
   /** Lo que ocurrirá en `effectiveAt` (= fin del período): cambio de plan programado o cancelación (vuelve al plan base). */
   scheduledChange?: ScheduledChange | null;
+  /** Quién cobra la renovación (`mercadopago` o simulada). En Mercado Pago cancelar la renovación es irreversible. */
+  provider?: string | null;
 }
 
 export interface ScheduledChange {
   kind: 'UPGRADE' | 'DOWNGRADE' | 'CANCELLATION';
   toPlan: { id: string; code: string; name: string } | null;
   effectiveAt: string;
-}
-
-/** Cambio de plan programado por POST /billing/mock-checkout cuando el usuario ya tiene una suscripción paga: se aplica al renovar, nunca antes. */
-export interface PlanChangeResult {
-  kind: 'UPGRADE' | 'DOWNGRADE';
-  status: 'SCHEDULED';
-  effectiveAt: string;
-  fromPlan: { id: string; code: string; name: string };
-  toPlan: { id: string; code: string; name: string };
-  alreadyScheduled: boolean;
 }
 
 /** Referencia mínima de un plan en la cotización de un upgrade. */
@@ -125,13 +117,6 @@ export interface UpgradeQuote {
   newPeriodStart: string;
   nextRenewalAt: string;
   quotedAt: string;
-}
-
-/** Respuesta de POST /billing/mock-checkout: una compra (suscripción/paquete + orden), un upgrade inmediato (orden PLAN_UPGRADE y la suscripción ya con el plan nuevo; sin `change`) o un downgrade programado (`order: null` + `change`). */
-export interface CheckoutResult {
-  subscription?: ActiveSubscription | null;
-  order?: { id: string; status: string } | null;
-  change?: PlanChangeResult;
 }
 
 /** Plan efectivo del usuario: el de su suscripción paga vigente o, si no la tiene, el plan base Free (que no es una suscripción). */

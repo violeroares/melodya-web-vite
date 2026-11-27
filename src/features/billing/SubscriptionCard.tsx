@@ -90,7 +90,8 @@ export function SubscriptionCard({ subscription, entitlements }: { subscription:
     },
   });
 
-  const copy = cancelDialogCopy(plan.name, state.endsOn);
+  const copy = cancelDialogCopy(plan.name, state.endsOn, subscription.provider);
+  const providerManaged = subscription.provider === 'mercadopago';
   // Plan vigente / cambio futuro / fecha / qué pasará ese día (nunca se presenta el plan futuro como vigente).
   const scheduled = state.kind === 'ended' ? null : scheduledChangeView(subscription.scheduledChange, plan.name);
   const isPlanChange = subscription.scheduledChange?.kind === 'UPGRADE' || subscription.scheduledChange?.kind === 'DOWNGRADE';
@@ -106,6 +107,7 @@ export function SubscriptionCard({ subscription, entitlements }: { subscription:
             {state.kind === 'renews' && <Badge variant="outline" className="border-amber/40 text-amber-strong">Activa</Badge>}
             {state.kind === 'canceled' && <Badge variant="outline" className="border-border text-muted-foreground">Renovación cancelada</Badge>}
             {state.kind === 'ended' && <Badge variant="outline" className="border-border text-muted-foreground">Finalizada</Badge>}
+            {state.kind === 'past_due' && <Badge variant="outline" className="border-border text-muted-foreground">Pago pendiente</Badge>}
           </div>
           <p className="text-sm text-muted-foreground">
             {price ? <>{price}{parts?.period ? ` / ${parts.period}` : ''} · </> : null}
@@ -117,6 +119,11 @@ export function SubscriptionCard({ subscription, entitlements }: { subscription:
           {state.kind === 'renews' && (
             <p className="flex items-center gap-1.5 text-sm text-muted-foreground">
               <RefreshCw className="h-3.5 w-3.5" aria-hidden /> Se renueva automáticamente el {state.endsOn}.
+            </p>
+          )}
+          {state.kind === 'past_due' && (
+            <p role="status" className="flex items-start gap-1.5 text-sm font-medium text-foreground" data-testid="past-due-notice">
+              <Info className="mt-0.5 h-3.5 w-3.5 shrink-0 text-amber-strong" aria-hidden /> No pudimos cobrar tu renovación. Mantenemos tu plan unos días mientras Mercado Pago vuelve a intentarlo; revisá tu medio de pago en Mercado Pago para no perderlo.
             </p>
           )}
           {state.kind === 'canceled' && (
@@ -138,7 +145,7 @@ export function SubscriptionCard({ subscription, entitlements }: { subscription:
         </div>
 
         <div className="flex flex-wrap gap-2">
-          {(state.kind === 'canceled' || isPlanChange) && (
+          {((state.kind === 'canceled' && !providerManaged) || isPlanChange) && (
             <Button className="w-full rounded-full sm:w-auto" onClick={() => resume.mutate()} disabled={resume.isPending}>
               {resume.isPending && <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" aria-hidden />}
               {state.kind === 'canceled' ? 'Reactivar renovación' : 'Deshacer el cambio de plan'}

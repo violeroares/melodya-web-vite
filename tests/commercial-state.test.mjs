@@ -97,7 +97,7 @@ for (const [name, root] of [['esta web', '..']]) {
     const hooks = read(`${root}/src/hooks/index.ts`);
     // checkout (compra, upgrade, downgrade programado) y reanudar: el mecanismo central, no invalidaciones sueltas
     assert.match(pricing, /useRefreshCommercialState\(\)/);
-    assert.equal((pricing.match(/void refreshCommercial\(\)/g) || []).length, 3, 'checkout, reanudar (éxito) y reanudar (error)');
+    assert.equal((pricing.match(/void refreshCommercial\(\)/g) || []).length, 2, 'reanudar (éxito) y reanudar (error): la compra ya no ocurre en Web');
     assert.doesNotMatch(pricing, /invalidateQueries\(\{ queryKey: \['credits'\] \}\)|invalidateQueries\(\{ queryKey: \['transactions'\] \}\)|getState\(\)\.loadMe\(\)/);
     // cancelar y reanudar desde la tarjeta
     assert.match(card, /useRefreshCommercialState\(\)/);
